@@ -5,10 +5,7 @@ import 'screens/register.dart';
 import 'screens/home.dart';
 
 void main() async {
-  // Necessário para inicializar plugins antes do runApp
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Verifica se existe usuário logado no cache
   final prefs = await SharedPreferences.getInstance();
   final bool logado = prefs.containsKey('usuario_id');
 
@@ -24,7 +21,14 @@ class SophiraKeeper extends StatelessWidget {
     return MaterialApp(
       title: 'Sophira Keeper',
       debugShowCheckedModeBanner: false,
-      // Se estiver logado, a rota inicial é /home, senão é /
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1A1B4B),
+          primary: const Color(0xFF2196F3),
+          secondary: const Color(0xFFE91E63),
+        ),
+      ),
       initialRoute: inicialLogado ? '/home' : '/',
       routes: {
         '/': (context) => const LoginScreen(),
