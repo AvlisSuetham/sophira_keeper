@@ -14,6 +14,7 @@ dependencies:
   http: ^1.6.0
   crypto: ^3.0.3
   mask_text_input_formatter: ^2.9.0
+  shared_preferences: ^2.5.4
 
 dev_dependencies:
   flutter_test:

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -42,9 +43,19 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => loading = false);
 
       if (data['success'] == true) {
+        // --- SALVAMENTO NO CACHE ---
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('usuario_id', int.parse(data['user']['id'].toString()));
+        await prefs.setString('usuario_nome', data['user']['nome']);
+
+        if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Bem-vindo, ${data['user']['nome']}')),
         );
+
+        // Vai para a home e remove a tela de login da memória
+        Navigator.pushReplacementNamed(context, '/home');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data['error'] ?? 'Erro no login')),
