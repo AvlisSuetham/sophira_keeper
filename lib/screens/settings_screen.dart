@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+// IMPORTANTE: Adicione o import da sua nova tela
+import 'backup_screen.dart'; 
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -172,6 +174,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 30),
+                  
+                  // SEÇÃO SEGURANÇA
                   const Text("SEGURANÇA", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                   const SizedBox(height: 10),
                   Card(
@@ -196,7 +200,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
+
+                  const SizedBox(height: 30),
+
+                  // SEÇÃO GERENCIAR DADOS (NOVO)
+                  const Text("DADOS E BACKUP", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  const SizedBox(height: 10),
+                  Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    child: ListTile(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BackupScreen())),
+                      leading: const Icon(Icons.storage_rounded, color: Colors.blue),
+                      title: const Text("Gerenciar dados", style: TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: const Text("Exportar ou importar registros (.sph)"),
+                      trailing: const Icon(Icons.chevron_right),
+                    ),
+                  ),
+
                   const SizedBox(height: 40),
+                  
+                  // ZONA CRÍTICA
                   const Text("ZONA CRÍTICA", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
                   const SizedBox(height: 10),
                   Card(

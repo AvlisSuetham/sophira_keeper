@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Importações das telas
 import 'screens/login.dart';
 import 'screens/register.dart';
 import 'screens/home.dart';
 import 'screens/forgotten.dart';
 import 'screens/password_generator_screen.dart'; 
-import 'screens/settings_screen.dart'; // O nome que definimos por último
+import 'screens/settings_screen.dart';
+import 'screens/backup_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +43,7 @@ class SophiraKeeper extends StatelessWidget {
           fillColor: Colors.white,
         ),
       ),
+      // Se estiver logado, vai direto para a Home, senão, tela de Login
       initialRoute: inicialLogado ? '/home' : '/',
       routes: {
         '/': (context) => const LoginScreen(),
@@ -47,8 +51,8 @@ class SophiraKeeper extends StatelessWidget {
         '/home': (context) => const HomeScreen(),
         '/forgotten': (context) => const ForgottenScreen(),
         '/generator': (context) => const PasswordGeneratorScreen(),
-        // REMOVIDO O 'const' AQUI para evitar o erro de compilação:
-        '/settings': (context) => SettingsScreen(),           
+        '/settings': (context) => const SettingsScreen(),
+        '/backup': (context) => const BackupScreen(),
       },
     );
   }
