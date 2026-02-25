@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
-import 'dart:io' show Platform; // Para detectar Desktop
-import 'package:flutter/foundation.dart' show kIsWeb; // Para detectar Web
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -46,7 +46,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- LÓGICA DE BIOMETRIA ADAPTATIVA ---
 
   Future<void> _verificarBiometria() async {
-    // Pula biometria em Web ou Desktop (Linux/Windows/Mac) para evitar erros de driver
     if (kIsWeb || (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS))) {
       setState(() => _estaAutenticado = true);
       _inicializarApp();
@@ -109,7 +108,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// FUNÇÃO PRINCIPAL DE ATUALIZAÇÃO
   Future<void> _fetchCofres() async {
+    if (usuarioId <= 0) return;
+    
     try {
       final response = await http.get(
         Uri.parse('$apiUrl?acao=listar&usuario_id=$usuarioId'),
@@ -159,8 +161,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // --- COMPONENTES VISUAIS PADRONIZADOS ---
-
   Widget _buildAvatarIcon(String texto, Color cor, {double tamanho = 25}) {
     return CircleAvatar(
       radius: tamanho,
@@ -171,8 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  // --- INTERFACE PRINCIPAL ---
 
   @override
   Widget build(BuildContext context) {
@@ -192,7 +190,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   onRefresh: _fetchCofres,
                   child: isLoading && cofres.isEmpty
                     ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
+                    : cofres.isEmpty 
+                      ? ListView(children: const [SizedBox(height: 100), Center(child: Text("Nenhum registro encontrado."))])
+                      : ListView.builder(
                         padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
                         itemCount: cofres.length,
                         itemBuilder: (context, index) {
@@ -281,11 +281,14 @@ class _HomeScreenState extends State<HomeScreen> {
               IconButton(
                 icon: const Icon(Icons.settings_suggest_rounded, color: Colors.white70),
                 tooltip: "Configurações",
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  // AGUARDA O RETORNO DA TELA DE CONFIGURAÇÕES/BACKUP
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const SettingsScreen()),
                   );
+                  // ATUALIZA OS DADOS AO VOLTAR
+                  _fetchCofres();
                 },
               ),
               IconButton(icon: const Icon(Icons.logout_rounded, color: Colors.redAccent), onPressed: _logout, tooltip: "Sair"),
@@ -417,7 +420,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       return Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
     } catch (e) {
-      return Colors.blue; // Cor padrão em caso de erro
+      return Colors.blue;
     }
   }
 

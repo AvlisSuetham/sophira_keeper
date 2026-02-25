@@ -19,20 +19,30 @@ class _BackupScreenState extends State<BackupScreen> {
   bool isProcessing = false;
   final String apiUrl = "https://cyan-grouse-960236.hostingersite.com/api/vault.php";
 
+  void _showMsg(String m, Color c) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(m), 
+        backgroundColor: c, 
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      )
+    );
+  }
+
   Future<void> _exportarBackup() async {
     setState(() => isProcessing = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       final int usuarioId = prefs.getInt('usuario_id') ?? 0;
 
-      // 1. Busca os dados atuais do servidor
       final response = await http.get(Uri.parse('$apiUrl?acao=listar&usuario_id=$usuarioId'));
       final data = jsonDecode(response.body);
 
       if (data['success'] == true) {
         List registros = data['data'];
         
-        // 2. Limpa os dados para o formato de exportação
         var backupData = registros.map((e) => {
           'servico_nome': e['servico_nome'],
           'servico_usuario': e['servico_usuario'],
@@ -43,9 +53,7 @@ class _BackupScreenState extends State<BackupScreen> {
         String jsonString = jsonEncode(backupData);
         String fileName = 'backup_sophira_${DateTime.now().millisecondsSinceEpoch}.sph';
 
-        // 3. Lógica Adaptativa por Plataforma
         if (!kIsWeb && Platform.isLinux) {
-          // Correção para Linux: Abre o seletor de salvamento de arquivo
           String? outputFile = await FilePicker.platform.saveFile(
             dialogTitle: 'Selecione onde salvar seu backup',
             fileName: fileName,
@@ -58,8 +66,9 @@ class _BackupScreenState extends State<BackupScreen> {
             await file.writeAsString(jsonString);
             _showMsg("Backup salvo com sucesso!", Colors.green);
           }
+        } else if (kIsWeb) {
+          _showMsg("Exportação via Web não implementada nesta view.", Colors.orange);
         } else {
-          // Lógica para Android/iOS: Usa o compartilhamento do sistema
           final directory = await getTemporaryDirectory();
           final file = File('${directory.path}/$fileName');
           await file.writeAsString(jsonString);
@@ -82,16 +91,25 @@ class _BackupScreenState extends State<BackupScreen> {
 
   Future<void> _importarBackup() async {
     try {
+      // Alterado para FileType.any para permitir qualquer arquivo
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['sph', 'json'],
+        type: FileType.any,
       );
 
       if (result != null) {
         setState(() => isProcessing = true);
-        File file = File(result.files.single.path!);
-        String content = await file.readAsString();
-        List registros = jsonDecode(content);
+        
+        String content;
+        
+        // Suporte para leitura em múltiplas plataformas (Bytes para Web, Path para Mobile/Desktop)
+        if (kIsWeb) {
+          content = utf8.decode(result.files.single.bytes!);
+        } else {
+          final file = File(result.files.single.path!);
+          content = await file.readAsString();
+        }
+
+        final List registros = jsonDecode(content);
 
         final prefs = await SharedPreferences.getInstance();
         final int usuarioId = prefs.getInt('usuario_id') ?? 0;
@@ -106,24 +124,18 @@ class _BackupScreenState extends State<BackupScreen> {
         );
 
         final resData = jsonDecode(response.body);
-        if (resData['success']) {
+        if (resData['success'] == true) {
           _showMsg("${resData['importados']} registros importados com sucesso!", Colors.green);
         } else {
           _showMsg("Erro na importação: ${resData['error']}", Colors.red);
         }
       }
     } catch (e) {
-      _showMsg("Erro ao importar: Arquivo inválido ou corrompido.", Colors.red);
+      debugPrint("Erro na importação: $e");
+      _showMsg("Erro: Arquivo inválido ou corrompido.", Colors.red);
     } finally {
       if (mounted) setState(() => isProcessing = false);
     }
-  }
-
-  void _showMsg(String m, Color c) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating)
-    );
   }
 
   @override
@@ -137,14 +149,23 @@ class _BackupScreenState extends State<BackupScreen> {
         elevation: 0,
       ),
       body: isProcessing 
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 20),
+                Text("Processando dados...", style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          )
         : SingleChildScrollView(
             padding: const EdgeInsets.all(25),
             child: Column(
               children: [
                 _buildOptionCard(
                   "Exportar Dados", 
-                  "Gera um arquivo .sph com todas as suas senhas atuais. No Linux, você escolherá a pasta de destino.", 
+                  "Gera um arquivo com suas senhas atuais para segurança ou migração.", 
                   Icons.cloud_upload_outlined, 
                   Colors.blue, 
                   _exportarBackup
@@ -152,35 +173,39 @@ class _BackupScreenState extends State<BackupScreen> {
                 const SizedBox(height: 20),
                 _buildOptionCard(
                   "Importar Dados", 
-                  "Selecione um arquivo .sph para restaurar seus registros neste dispositivo.", 
+                  "Selecione qualquer arquivo de backup para restaurar seus registros.", 
                   Icons.file_download_outlined, 
                   Colors.green, 
                   _importarBackup
                 ),
                 const SizedBox(height: 40),
-                Container(
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: Colors.amber.withOpacity(0.3))
-                  ),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                      SizedBox(width: 15),
-                      Expanded(
-                        child: Text(
-                          "Atenção: Os arquivos de backup (.sph) contêm suas senhas descriptografadas. Mantenha-os em local seguro e delete-os após o uso.",
-                          style: TextStyle(color: Colors.black87, fontSize: 12),
-                        ),
-                      )
-                    ],
-                  ),
-                )
+                _buildWarningBox(),
               ],
             ),
           ),
+    );
+  }
+
+  Widget _buildWarningBox() {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.amber.withOpacity(0.3))
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange),
+          SizedBox(width: 15),
+          Expanded(
+            child: Text(
+              "Atenção: Arquivos de backup contêm suas senhas. Mantenha-os em local seguro e evite compartilhá-los com terceiros.",
+              style: TextStyle(color: Colors.black87, fontSize: 12),
+            ),
+          )
+        ],
+      ),
     );
   }
 

@@ -212,7 +212,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BackupScreen())),
                       leading: const Icon(Icons.storage_rounded, color: Colors.blue),
                       title: const Text("Gerenciar dados", style: TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: const Text("Exportar ou importar registros (.sph)"),
+                      subtitle: const Text("Exportar ou importar registros."),
                       trailing: const Icon(Icons.chevron_right),
                     ),
                   ),
