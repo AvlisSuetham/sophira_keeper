@@ -15,6 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController cpfController = TextEditingController();
   final TextEditingController senhaController = TextEditingController();
   
+  // Máscara para formatar o CPF enquanto o usuário digita
   final maskCpf = MaskTextInputFormatter(
     mask: "###.###.###-##",
     filter: {"#": RegExp(r'[0-9]')},
@@ -24,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> login() async {
     final cpfLimpo = maskCpf.getUnmaskedText();
+    
     if (cpfLimpo.isEmpty || senhaController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Preencha todos os campos')),
@@ -43,7 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => loading = false);
 
       if (data['success'] == true) {
-        // --- SALVAMENTO NO CACHE ---
+        // Salva os dados do usuário localmente
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('usuario_id', int.parse(data['user']['id'].toString()));
         await prefs.setString('usuario_nome', data['user']['nome']);
@@ -54,17 +56,17 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(content: Text('Bem-vindo, ${data['user']['nome']}')),
         );
 
-        // Vai para a home e remove a tela de login da memória
+        // Navega para a home removendo a pilha de telas anterior
         Navigator.pushReplacementNamed(context, '/home');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['error'] ?? 'Erro no login')),
+          SnackBar(content: Text(data['error'] ?? 'Erro no login'), backgroundColor: Colors.red),
         );
       }
     } catch (e) {
       setState(() => loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erro de conexão')),
+        const SnackBar(content: Text('Erro de conexão com o servidor'), backgroundColor: Colors.orange),
       );
     }
   }
@@ -80,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF1A1B4B), // Roxo bem escuro
+              Color(0xFF1A1B4B), // Roxo escuro
               Color(0xFF2196F3), // Azul
               Color(0xFFE91E63), // Rosa
             ],
@@ -92,15 +94,14 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // --- LOGO SUBSTITUÍDA AQUI ---
+                // Logo do Aplicativo
                 Image.asset(
                   'assets/logo.png',
-                  width: 128,
-                  height: 128,
+                  width: 120,
+                  height: 120,
                   fit: BoxFit.contain,
-                  // Fallback caso o arquivo não seja encontrado
                   errorBuilder: (context, error, stackTrace) {
-                    return const Icon(Icons.image_not_supported, size: 80, color: Colors.white24);
+                    return const Icon(Icons.shield_rounded, size: 80, color: Colors.white24);
                   },
                 ),
                 const SizedBox(height: 24),
@@ -111,7 +112,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     letterSpacing: 1.5,
-                    shadows: [Shadow(color: Colors.black26, blurRadius: 10, offset: Offset(2, 2))],
                   ),
                 ),
                 const Text(
@@ -120,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 48),
 
-                // Campo CPF
+                // Campo de CPF
                 TextField(
                   controller: cpfController,
                   inputFormatters: [maskCpf],
@@ -144,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Campo Senha
+                // Campo de Senha
                 TextField(
                   controller: senhaController,
                   obscureText: true,
@@ -165,7 +165,20 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+
+                // Botão Esqueci minha senha
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.pushNamed(context, '/forgotten'),
+                    child: const Text(
+                      'Esqueci minha senha',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 16),
 
                 // Botão de Login
                 SizedBox(
@@ -192,6 +205,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
+                
+                // Link para Registro
                 TextButton(
                   onPressed: () => Navigator.pushNamed(context, '/register'),
                   child: const Text(
