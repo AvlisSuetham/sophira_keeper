@@ -3,14 +3,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/login.dart';
 import 'screens/register.dart';
 import 'screens/home.dart';
-import 'screens/forgotten.dart'; // Import da nova tela
+import 'screens/forgotten.dart';
+import 'screens/password_generator_screen.dart'; 
+import 'screens/settings_screen.dart'; // O nome que definimos por último
 
 void main() async {
-  // Garante que o Flutter esteja inicializado antes de acessar o SharedPreferences
   WidgetsFlutterBinding.ensureInitialized();
   
   final prefs = await SharedPreferences.getInstance();
-  final bool logado = prefs.containsKey('usuario_id');
+  // Verifica se o ID do usuário existe e é válido (> 0)
+  final int usuarioId = prefs.getInt('usuario_id') ?? 0;
+  final bool logado = usuarioId > 0;
 
   runApp(SophiraKeeper(inicialLogado: logado));
 }
@@ -28,17 +31,24 @@ class SophiraKeeper extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF1A1B4B),
-          primary: const Color(0xFF2196F3),
-          secondary: const Color(0xFFE91E63),
+          primary: const Color(0xFF1A1B4B), 
+          secondary: const Color(0xFFE91E63), 
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: Colors.white,
         ),
       ),
-      // Define a rota inicial baseada no status de login
       initialRoute: inicialLogado ? '/home' : '/',
       routes: {
         '/': (context) => const LoginScreen(),
         '/register': (context) => const RegisterScreen(),
         '/home': (context) => const HomeScreen(),
         '/forgotten': (context) => const ForgottenScreen(),
+        '/generator': (context) => const PasswordGeneratorScreen(),
+        // REMOVIDO O 'const' AQUI para evitar o erro de compilação:
+        '/settings': (context) => SettingsScreen(),           
       },
     );
   }

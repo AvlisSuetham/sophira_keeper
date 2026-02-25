@@ -8,8 +8,9 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 
-// Certifique-se de que o arquivo da tela do gerador existe e o nome está correto:
+// Importações das telas do projeto
 import 'password_generator_screen.dart'; 
+import 'settings_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- LÓGICA DE BIOMETRIA ADAPTATIVA ---
 
   Future<void> _verificarBiometria() async {
+    // Pula biometria em Web ou Desktop (Linux/Windows/Mac) para evitar erros de driver
     if (kIsWeb || (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS))) {
       setState(() => _estaAutenticado = true);
       _inicializarApp();
@@ -71,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _estaAutenticado = true);
         _inicializarApp();
       }
-    } on PlatformException catch (e) {
+    } on PlatformException catch (_) {
       setState(() => _estaAutenticado = true); 
       _inicializarApp();
     }
@@ -99,7 +101,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadFromCache() async {
     final prefs = await SharedPreferences.getInstance();
     String? cachedData = prefs.getString('cache_vault_$usuarioId');
-    if (cachedData != null) setState(() => cofres = jsonDecode(cachedData));
+    if (cachedData != null) {
+      setState(() {
+        cofres = jsonDecode(cachedData);
+        isLoading = false;
+      });
+    }
   }
 
   Future<void> _fetchCofres() async {
@@ -152,6 +159,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // --- COMPONENTES VISUAIS PADRONIZADOS ---
+
+  Widget _buildAvatarIcon(String texto, Color cor, {double tamanho = 25}) {
+    return CircleAvatar(
+      radius: tamanho,
+      backgroundColor: cor.withOpacity(0.15),
+      child: Text(
+        texto.isNotEmpty ? texto[0].toUpperCase() : "?",
+        style: TextStyle(color: cor, fontWeight: FontWeight.bold, fontSize: tamanho * 0.8),
+      ),
+    );
+  }
+
   // --- INTERFACE PRINCIPAL ---
 
   @override
@@ -188,11 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: ListTile(
                               onTap: () => _showDetailsModal(item),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              leading: CircleAvatar(
-                                radius: 25,
-                                backgroundColor: cor.withOpacity(0.1),
-                                child: Text(item['servico_nome'][0].toUpperCase(), style: TextStyle(color: cor, fontWeight: FontWeight.bold)),
-                              ),
+                              leading: _buildAvatarIcon(item['servico_nome'], cor),
                               title: Text(item['servico_nome'], style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A1B4B))),
                               subtitle: Text(item['servico_usuario']),
                               trailing: Row(
@@ -211,7 +227,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           
-          // Aviso Offline Estilizado (Toast Flutuante)
           if (isOffline)
             Positioned(
               bottom: 90, left: 20, right: 20,
@@ -263,7 +278,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PasswordGeneratorScreen())),
                 tooltip: "Gerador de Senhas",
               ),
-              IconButton(icon: const Icon(Icons.settings_suggest_rounded, color: Colors.white70), onPressed: () {}, tooltip: "Configurações"),
+              IconButton(
+                icon: const Icon(Icons.settings_suggest_rounded, color: Colors.white70),
+                tooltip: "Configurações",
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                  );
+                },
+              ),
               IconButton(icon: const Icon(Icons.logout_rounded, color: Colors.redAccent), onPressed: _logout, tooltip: "Sair"),
             ],
           ),
@@ -290,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
             const SizedBox(height: 20),
-            CircleAvatar(radius: 35, backgroundColor: corFundo, child: Text(item['servico_nome'][0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold))),
+            _buildAvatarIcon(item['servico_nome'], corFundo, tamanho: 40),
             const SizedBox(height: 15),
             Text(item['servico_nome'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const Divider(height: 40),
@@ -388,7 +412,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showErrorSnackBar(String mensagem) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent));
-  Color _hexToColor(String hexCode) => Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
+
+  Color _hexToColor(String hexCode) {
+    try {
+      return Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
+    } catch (e) {
+      return Colors.blue; // Cor padrão em caso de erro
+    }
+  }
+
   String _colorToHex(Color color) => '#${color.value.toRadixString(16).substring(2)}';
 
   _logout() async {
