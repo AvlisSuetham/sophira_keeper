@@ -1,6 +1,7 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Importante para o Clipboard
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,10 +18,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int usuarioId = 0;
   List<dynamic> cofres = [];
   bool isLoading = true;
+  bool isOffline = false; // Indica se os dados atuais vieram do cache
 
   final String apiUrl = "https://cyan-grouse-960236.hostingersite.com/api/vault.php";
 
-  // Cores disponíveis para o usuário escolher
   final List<Color> listaCores = [
     Colors.blue, Colors.red, Colors.green, Colors.purple,
     Colors.orange, Colors.teal, Colors.pink, Colors.indigo,
@@ -30,57 +31,85 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _carregarDados();
+    _inicializarApp();
   }
 
-  // --- UTILITÁRIOS DE COR ---
-  Color _hexToColor(String hexCode) {
-    try {
-      return Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
-    } catch (e) {
-      return Colors.blue;
+  // --- LÓGICA DE SINCRONIZAÇÃO E CACHE ---
+
+  Future<void> _inicializarApp() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      nomeUsuario = prefs.getString('usuario_nome') ?? "Usuário";
+      inicialNome = nomeUsuario.isNotEmpty ? nomeUsuario[0].toUpperCase() : "U";
+      usuarioId = prefs.getInt('usuario_id') ?? 0;
+    });
+
+    // 1. Carrega o que tiver no cache imediatamente para o usuário não ver tela vazia
+    await _loadFromCache();
+    
+    // 2. Tenta buscar dados novos do servidor
+    if (usuarioId > 0) {
+      _fetchCofres();
     }
   }
 
-  String _colorToHex(Color color) {
-    return '#${color.value.toRadixString(16).substring(2)}';
+  Future<void> _saveToCache(List<dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('cache_vault_$usuarioId', jsonEncode(data));
   }
 
-  // --- CARREGAR DADOS INICIAIS ---
-  _carregarDados() async {
+  Future<void> _loadFromCache() async {
     final prefs = await SharedPreferences.getInstance();
-    String nome = prefs.getString('usuario_nome') ?? "Usuário";
-    setState(() {
-      nomeUsuario = nome;
-      inicialNome = nome.isNotEmpty ? nome[0].toUpperCase() : "U";
-      usuarioId = prefs.getInt('usuario_id') ?? 0;
-    });
-    if (usuarioId > 0) _fetchCofres();
+    String? cachedData = prefs.getString('cache_vault_$usuarioId');
+    if (cachedData != null) {
+      setState(() {
+        cofres = jsonDecode(cachedData);
+        // Não alteramos isLoading aqui para não interromper a tentativa de fetch
+      });
+    }
   }
 
   // --- API: LISTAR ---
   Future<void> _fetchCofres() async {
-    setState(() => isLoading = true);
     try {
-      final response = await http.get(Uri.parse('$apiUrl?acao=listar&usuario_id=$usuarioId'));
-      final data = jsonDecode(response.body);
-      if (data['success'] == true) {
-        setState(() => cofres = data['data']);
+      // Timeout de 7 segundos para evitar espera infinita
+      final response = await http.get(
+        Uri.parse('$apiUrl?acao=listar&usuario_id=$usuarioId'),
+      ).timeout(const Duration(seconds: 7));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          setState(() {
+            cofres = data['data'];
+            isOffline = false;
+            isLoading = false;
+          });
+          _saveToCache(data['data']); // Sincroniza o cache local
+        }
       }
     } catch (e) {
-      debugPrint("Erro ao carregar: $e");
-    } finally {
-      setState(() => isLoading = false);
+      debugPrint("Erro de conexão, operando offline: $e");
+      setState(() {
+        isOffline = true;
+        isLoading = false;
+      });
+      _loadFromCache(); // Garante que os dados locais estão na tela
     }
   }
 
   // --- API: EXCLUIR ---
   Future<void> _excluirCofre(int id) async {
+    if (isOffline) {
+      _showErrorSnackBar("Não é possível excluir enquanto estiver offline.");
+      return;
+    }
+
     bool confirmar = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Excluir registro?"),
-        content: const Text("Esta ação não pode ser desfeita."),
+        content: const Text("Esta ação removerá o dado do servidor."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancelar")),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Excluir", style: TextStyle(color: Colors.red))),
@@ -96,15 +125,33 @@ class _HomeScreenState extends State<HomeScreen> {
         _fetchCofres();
       }
     } catch (e) {
-      debugPrint("Erro ao excluir: $e");
+      _showErrorSnackBar("Erro ao excluir. Verifique sua conexão.");
     }
   }
 
-  // --- MODAL: DETALHES (AO CLICAR NO CARD) ---
+  // --- UTILS ---
+  void _showErrorSnackBar(String mensagem) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent),
+    );
+  }
+
+  Color _hexToColor(String hexCode) {
+    try {
+      return Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
+    } catch (e) {
+      return Colors.blue;
+    }
+  }
+
+  String _colorToHex(Color color) {
+    return '#${color.value.toRadixString(16).substring(2)}';
+  }
+
+  // --- MODAIS (DETALHES E FORMULÁRIO) ---
+
   void _showDetailsModal(Map<String, dynamic> item) {
     final Color corFundo = _hexToColor(item['color'] ?? '#2196F3');
-    final String inicial = item['servico_nome'].toString().isNotEmpty ? item['servico_nome'][0].toUpperCase() : "?";
-
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
@@ -116,9 +163,8 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
             const SizedBox(height: 20),
             CircleAvatar(
-              radius: 30,
-              backgroundColor: corFundo,
-              child: Text(inicial, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              radius: 30, backgroundColor: corFundo,
+              child: Text(item['servico_nome'][0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 10),
             Text(item['servico_nome'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
@@ -127,18 +173,6 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 15),
             _buildDetailRow("Senha", item['servico_senha'], Icons.lock_outline),
             const SizedBox(height: 30),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1A1B4B),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text("FECHAR", style: TextStyle(color: Colors.white)),
-              ),
-            ),
           ],
         ),
       ),
@@ -159,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: const Icon(Icons.copy, size: 20, color: Colors.blue),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: valor));
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label copiado!"), duration: const Duration(seconds: 1)));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label copiado!")));
               },
             ),
           ],
@@ -168,8 +202,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- MODAL: FORMULÁRIO (ADD / EDIT) ---
   void _showFormDialog({Map<String, dynamic>? registro}) {
+    if (isOffline) {
+      _showErrorSnackBar("Conecte-se à internet para salvar alterações.");
+      return;
+    }
+
     final isEditing = registro != null;
     final nomeController = TextEditingController(text: isEditing ? registro['servico_nome'] : '');
     final userController = TextEditingController(text: isEditing ? registro['servico_usuario'] : '');
@@ -186,20 +224,15 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nomeController, decoration: const InputDecoration(labelText: "Serviço", prefixIcon: Icon(Icons.label))),
-                TextField(controller: userController, decoration: const InputDecoration(labelText: "Usuário", prefixIcon: Icon(Icons.person))),
-                TextField(controller: senhaController, decoration: const InputDecoration(labelText: "Senha", prefixIcon: Icon(Icons.lock))),
+                TextField(controller: nomeController, decoration: const InputDecoration(labelText: "Serviço")),
+                TextField(controller: userController, decoration: const InputDecoration(labelText: "Usuário")),
+                TextField(controller: senhaController, decoration: const InputDecoration(labelText: "Senha")),
                 const SizedBox(height: 20),
-                const Text("Cor do ícone:", style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
                 Wrap(
                   spacing: 8, runSpacing: 8,
                   children: listaCores.map((cor) => GestureDetector(
                     onTap: () => setModalState(() => corSelecionada = cor),
-                    child: CircleAvatar(
-                      radius: 18, backgroundColor: cor,
-                      child: corSelecionada == cor ? const Icon(Icons.check, color: Colors.white, size: 20) : null,
-                    ),
+                    child: CircleAvatar(radius: 15, backgroundColor: cor, child: corSelecionada == cor ? const Icon(Icons.check, size: 16, color: Colors.white) : null),
                   )).toList(),
                 ),
               ],
@@ -209,7 +242,6 @@ class _HomeScreenState extends State<HomeScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
             ElevatedButton(
               onPressed: () async {
-                if (nomeController.text.isEmpty) return;
                 final payload = {
                   'usuario_id': usuarioId,
                   'servico_nome': nomeController.text,
@@ -219,9 +251,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 };
                 if (isEditing) payload['id'] = registro['id'];
                 
-                final acao = isEditing ? 'editar' : 'adicionar';
-                final response = await http.post(Uri.parse('$apiUrl?acao=$acao'),
-                    headers: {'Content-Type': 'application/json'}, body: jsonEncode(payload));
+                final response = await http.post(
+                  Uri.parse('$apiUrl?acao=${isEditing ? 'editar' : 'adicionar'}'),
+                  headers: {'Content-Type': 'application/json'},
+                  body: jsonEncode(payload)
+                );
                 
                 if (jsonDecode(response.body)['success']) {
                   Navigator.pop(context);
@@ -249,8 +283,18 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: [
           _buildHeader(),
+          // Alerta visual de modo offline
+          if (isOffline)
+            Container(
+              width: double.infinity,
+              color: Colors.amber[700],
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: const Text("MODO OFFLINE - APENAS LEITURA", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+            ),
           Expanded(
-            child: isLoading
+            child: RefreshIndicator(
+              onRefresh: _fetchCofres,
+              child: isLoading && cofres.isEmpty
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
                     padding: const EdgeInsets.all(20),
@@ -258,10 +302,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemBuilder: (context, index) {
                       final item = cofres[index];
                       final Color cor = _hexToColor(item['color'] ?? '#2196F3');
-                      final String inicial = item['servico_nome'].toString().isNotEmpty ? item['servico_nome'][0].toUpperCase() : "?";
-                      return _buildSenhaItem(item, cor, inicial);
+                      return Card(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        child: ListTile(
+                          onTap: () => _showDetailsModal(item),
+                          leading: CircleAvatar(backgroundColor: cor, child: Text(item['servico_nome'][0].toUpperCase(), style: const TextStyle(color: Colors.white))),
+                          title: Text(item['servico_nome'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text(item['servico_usuario']),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showFormDialog(registro: item)),
+                              IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _excluirCofre(int.parse(item['id'].toString()))),
+                            ],
+                          ),
+                        ),
+                      );
                     },
                   ),
+            ),
           ),
         ],
       ),
@@ -294,26 +353,6 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 20),
           Text('Olá, $nomeUsuario', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSenhaItem(Map<String, dynamic> item, Color cor, String inicial) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: ListTile(
-        onTap: () => _showDetailsModal(item),
-        leading: CircleAvatar(backgroundColor: cor, child: Text(inicial, style: const TextStyle(color: Colors.white))),
-        title: Text(item['servico_nome'], style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(item['servico_usuario']),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showFormDialog(registro: item)),
-            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _excluirCofre(int.parse(item['id'].toString()))),
-          ],
-        ),
       ),
     );
   }
