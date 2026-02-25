@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io' show Platform; // Import para detectar Desktop
+import 'package:flutter/foundation.dart' show kIsWeb; // Import para detectar Web
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart'; // Importe a biometria
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,12 +16,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final LocalAuthentication auth = LocalAuthentication();
   String nomeUsuario = "";
   String inicialNome = "";
   int usuarioId = 0;
   List<dynamic> cofres = [];
   bool isLoading = true;
-  bool isOffline = false; // Indica se os dados atuais vieram do cache
+  bool isOffline = false;
+  bool _estaAutenticado = false; // Controle de acesso por biometria
 
   final String apiUrl = "https://cyan-grouse-960236.hostingersite.com/api/vault.php";
 
@@ -31,7 +36,49 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _inicializarApp();
+    _verificarBiometria(); // Inicia com a trava de segurança
+  }
+
+  // --- LÓGICA DE BIOMETRIA ADAPTATIVA ---
+
+  Future<void> _verificarBiometria() async {
+    // Verifica se a plataforma é Desktop ou Web
+    if (kIsWeb || (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS))) {
+      debugPrint("Plataforma Desktop/Web detectada. Pulando biometria.");
+      setState(() => _estaAutenticado = true);
+      _inicializarApp();
+      return;
+    }
+
+    // Lógica para dispositivos Mobile (Android/iOS)
+    try {
+      final bool podeVerificarBiometria = await auth.canCheckBiometrics;
+      final bool suporteHardware = await auth.isDeviceSupported();
+
+      if (podeVerificarBiometria || suporteHardware) {
+        final bool autenticado = await auth.authenticate(
+          localizedReason: 'Autentique-se para acessar seu cofre de senhas',
+          options: const AuthenticationOptions(
+            stickyAuth: true,
+            biometricOnly: false, 
+          ),
+        );
+
+        if (autenticado) {
+          setState(() => _estaAutenticado = true);
+          _inicializarApp();
+        } else {
+          SystemNavigator.pop(); 
+        }
+      } else {
+        setState(() => _estaAutenticado = true);
+        _inicializarApp();
+      }
+    } on PlatformException catch (e) {
+      debugPrint("Erro biometria: $e");
+      setState(() => _estaAutenticado = true); 
+      _inicializarApp();
+    }
   }
 
   // --- LÓGICA DE SINCRONIZAÇÃO E CACHE ---
@@ -44,10 +91,8 @@ class _HomeScreenState extends State<HomeScreen> {
       usuarioId = prefs.getInt('usuario_id') ?? 0;
     });
 
-    // 1. Carrega o que tiver no cache imediatamente para o usuário não ver tela vazia
     await _loadFromCache();
     
-    // 2. Tenta buscar dados novos do servidor
     if (usuarioId > 0) {
       _fetchCofres();
     }
@@ -64,7 +109,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (cachedData != null) {
       setState(() {
         cofres = jsonDecode(cachedData);
-        // Não alteramos isLoading aqui para não interromper a tentativa de fetch
       });
     }
   }
@@ -72,7 +116,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- API: LISTAR ---
   Future<void> _fetchCofres() async {
     try {
-      // Timeout de 7 segundos para evitar espera infinita
       final response = await http.get(
         Uri.parse('$apiUrl?acao=listar&usuario_id=$usuarioId'),
       ).timeout(const Duration(seconds: 7));
@@ -85,16 +128,15 @@ class _HomeScreenState extends State<HomeScreen> {
             isOffline = false;
             isLoading = false;
           });
-          _saveToCache(data['data']); // Sincroniza o cache local
+          _saveToCache(data['data']);
         }
       }
     } catch (e) {
-      debugPrint("Erro de conexão, operando offline: $e");
       setState(() {
         isOffline = true;
         isLoading = false;
       });
-      _loadFromCache(); // Garante que os dados locais estão na tela
+      _loadFromCache();
     }
   }
 
@@ -129,7 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // --- UTILS ---
   void _showErrorSnackBar(String mensagem) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent),
@@ -148,12 +189,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return '#${color.value.toRadixString(16).substring(2)}';
   }
 
-  // --- MODAIS (DETALHES E FORMULÁRIO) ---
+  // --- MODAIS ---
 
   void _showDetailsModal(Map<String, dynamic> item) {
     final Color corFundo = _hexToColor(item['color'] ?? '#2196F3');
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
       builder: (context) => Padding(
         padding: const EdgeInsets.all(25),
@@ -163,14 +205,14 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
             const SizedBox(height: 20),
             CircleAvatar(
-              radius: 30, backgroundColor: corFundo,
-              child: Text(item['servico_nome'][0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              radius: 35, backgroundColor: corFundo,
+              child: Text(item['servico_nome'][0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
             ),
-            const SizedBox(height: 10),
-            Text(item['servico_nome'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const Divider(height: 30),
-            _buildDetailRow("Usuário", item['servico_usuario'], Icons.person_outline),
             const SizedBox(height: 15),
+            Text(item['servico_nome'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Divider(height: 40),
+            _buildDetailRow("Usuário", item['servico_usuario'], Icons.person_outline),
+            const SizedBox(height: 20),
             _buildDetailRow("Senha", item['servico_senha'], Icons.lock_outline),
             const SizedBox(height: 30),
           ],
@@ -183,20 +225,25 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        Row(
-          children: [
-            Icon(icon, size: 20, color: Colors.grey[600]),
-            const SizedBox(width: 10),
-            Expanded(child: Text(valor, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
-            IconButton(
-              icon: const Icon(Icons.copy, size: 20, color: Colors.blue),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: valor));
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label copiado!")));
-              },
-            ),
-          ],
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 5),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
+          child: Row(
+            children: [
+              Icon(icon, size: 22, color: Colors.blueGrey),
+              const SizedBox(width: 12),
+              Expanded(child: Text(valor, style: const TextStyle(fontSize: 16, letterSpacing: 0.5))),
+              IconButton(
+                icon: const Icon(Icons.copy_rounded, size: 20, color: Colors.blue),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: valor));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label copiado!"), behavior: SnackBarBehavior.floating));
+                },
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -224,10 +271,12 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nomeController, decoration: const InputDecoration(labelText: "Serviço")),
-                TextField(controller: userController, decoration: const InputDecoration(labelText: "Usuário")),
-                TextField(controller: senhaController, decoration: const InputDecoration(labelText: "Senha")),
+                TextField(controller: nomeController, decoration: const InputDecoration(labelText: "Serviço", prefixIcon: Icon(Icons.apps))),
+                TextField(controller: userController, decoration: const InputDecoration(labelText: "Usuário", prefixIcon: Icon(Icons.person))),
+                TextField(controller: senhaController, decoration: const InputDecoration(labelText: "Senha", prefixIcon: Icon(Icons.vpn_key))),
                 const SizedBox(height: 20),
+                const Text("Escolha uma cor:", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 10),
                 Wrap(
                   spacing: 8, runSpacing: 8,
                   children: listaCores.map((cor) => GestureDetector(
@@ -278,12 +327,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_estaAutenticado) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: Column(
         children: [
           _buildHeader(),
-          // Alerta visual de modo offline
           if (isOffline)
             Container(
               width: double.infinity,
@@ -297,23 +349,28 @@ class _HomeScreenState extends State<HomeScreen> {
               child: isLoading && cofres.isEmpty
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     itemCount: cofres.length,
                     itemBuilder: (context, index) {
                       final item = cofres[index];
                       final Color cor = _hexToColor(item['color'] ?? '#2196F3');
                       return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                         child: ListTile(
                           onTap: () => _showDetailsModal(item),
-                          leading: CircleAvatar(backgroundColor: cor, child: Text(item['servico_nome'][0].toUpperCase(), style: const TextStyle(color: Colors.white))),
+                          leading: CircleAvatar(
+                            backgroundColor: cor.withOpacity(0.1),
+                            child: Text(item['servico_nome'][0].toUpperCase(), style: TextStyle(color: cor, fontWeight: FontWeight.bold)),
+                          ),
                           title: Text(item['servico_nome'], style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text(item['servico_usuario']),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showFormDialog(registro: item)),
-                              IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _excluirCofre(int.parse(item['id'].toString()))),
+                              IconButton(icon: const Icon(Icons.edit_outlined, color: Colors.blue), onPressed: () => _showFormDialog(registro: item)),
+                              IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _excluirCofre(int.parse(item['id'].toString()))),
                             ],
                           ),
                         ),
@@ -327,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showFormDialog(),
         backgroundColor: const Color(0xFFE91E63),
-        label: const Text("NOVO", style: TextStyle(color: Colors.white)),
+        label: const Text("NOVO ACESSO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         icon: const Icon(Icons.add, color: Colors.white),
       ),
     );
@@ -335,23 +392,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.only(top: 50, left: 25, right: 15, bottom: 30),
+      padding: const EdgeInsets.only(top: 50, left: 25, right: 10, bottom: 30),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFF1A1B4B), Color(0xFF2196F3)]),
+        gradient: LinearGradient(colors: [Color(0xFF1A1B4B), Color(0xFF2D32A4)]),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
+        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               CircleAvatar(backgroundColor: Colors.white24, child: Text(inicialNome, style: const TextStyle(color: Colors.white))),
-              IconButton(onPressed: _logout, icon: const Icon(Icons.exit_to_app, color: Colors.white70)),
+              const Spacer(),
+              // Botões Adicionais
+              IconButton(icon: const Icon(Icons.enhanced_encryption_rounded, color: Colors.white70), onPressed: () {}, tooltip: "Gerador"),
+              IconButton(icon: const Icon(Icons.settings_suggest_rounded, color: Colors.white70), onPressed: () {}, tooltip: "Configurações"),
+              IconButton(icon: const Icon(Icons.logout_rounded, color: Colors.redAccent), onPressed: _logout, tooltip: "Sair"),
             ],
           ),
-          const SizedBox(height: 20),
-          Text('Olá, $nomeUsuario', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 25),
+          const Text('Bem-vindo ao seu cofre,', style: TextStyle(color: Colors.white70, fontSize: 16)),
+          Text(nomeUsuario, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
         ],
       ),
     );
