@@ -170,7 +170,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: ListTile(
                       leading: const CircleAvatar(backgroundColor: Color(0xFF2D32A4), child: Icon(Icons.person, color: Colors.white)),
                       title: Text(nomeUsuario, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text("ID: #$usuarioId"),
                     ),
                   ),
                   const SizedBox(height: 30),
@@ -184,7 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.all(20),
                       child: Column(
                         children: [
-                          TextField(controller: _senhaAtualController, obscureText: true, decoration: const InputDecoration(labelText: "Senha Atual")),
+                          TextField(controller: _senhaAtualController, obscureText: true, decoration: const InputDecoration(labelText: "Chave Atual")),
                           const SizedBox(height: 15),
                           TextField(controller: _novaSenhaController, obscureText: true, decoration: const InputDecoration(labelText: "Nova Chave Mestra")),
                           const SizedBox(height: 25),
