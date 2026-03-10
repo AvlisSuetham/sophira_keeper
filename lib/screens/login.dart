@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart'; 
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,60 +15,54 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController cpfController = TextEditingController();
   final TextEditingController senhaController = TextEditingController();
   
-  // Máscara para formatar o CPF enquanto o usuário digita
   final maskCpf = MaskTextInputFormatter(
     mask: "###.###.###-##",
     filter: {"#": RegExp(r'[0-9]')},
   );
 
   bool loading = false;
+  bool obscureSenha = true;
 
   Future<void> login() async {
     final cpfLimpo = maskCpf.getUnmaskedText();
     
     if (cpfLimpo.isEmpty || senhaController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Preencha todos os campos')),
-      );
+      _showMsg('Preencha todos os campos', Colors.orange);
       return;
     }
 
     setState(() => loading = true);
     try {
-      final response = await http.post(
-        Uri.parse('https://cyan-grouse-960236.hostingersite.com/api/usuario.php?acao=login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'cpf': cpfLimpo, 'senha': senhaController.text}),
-      );
-
-      final data = jsonDecode(response.body);
+      final data = await ApiService.login(cpfLimpo, senhaController.text);
       setState(() => loading = false);
 
       if (data['success'] == true) {
-        // Salva os dados do usuário localmente
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('usuario_id', int.parse(data['user']['id'].toString()));
         await prefs.setString('usuario_nome', data['user']['nome']);
 
         if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Bem-vindo, ${data['user']['nome']}')),
-        );
-
-        // Navega para a home removendo a pilha de telas anterior
+        _showMsg('Bem-vindo, ${data['user']['nome']}', Colors.green);
         Navigator.pushReplacementNamed(context, '/home');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['error'] ?? 'Erro no login'), backgroundColor: Colors.red),
-        );
+        _showMsg(data['error'] ?? 'Credenciais inválidas', Colors.redAccent);
       }
     } catch (e) {
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erro de conexão com o servidor'), backgroundColor: Colors.orange),
-      );
+      _showMsg('Erro de conexão com o servidor', Colors.red);
     }
+  }
+
+  void _showMsg(String m, Color c) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(m), 
+        backgroundColor: c, 
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -81,11 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1A1B4B), // Roxo escuro
-              Color(0xFF2196F3), // Azul
-              Color(0xFFE91E63), // Rosa
-            ],
+            colors: [Color(0xFF1A1B4B), Color(0xFF2196F3), Color(0xFFE91E63)],
           ),
         ),
         child: Center(
@@ -94,15 +84,18 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo do Aplicativo
-                Image.asset(
-                  'assets/logo.png',
-                  width: 120,
-                  height: 120,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(Icons.shield_rounded, size: 80, color: Colors.white24);
-                  },
+                // --- SUBSTITUIÇÃO DO ÍCONE PELA LOGO ---
+                Hero(
+                  tag: 'logo',
+                  child: Image.asset(
+                    'assets/logo.png',
+                    height: 100, // Ajuste o tamanho conforme necessário
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      // Caso a logo falhe ao carregar, exibe o escudo antigo como fallback
+                      return const Icon(Icons.shield_rounded, size: 80, color: Colors.white24);
+                    },
+                  ),
                 ),
                 const SizedBox(height: 24),
                 const Text(
@@ -120,53 +113,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 48),
 
-                // Campo de CPF
-                TextField(
-                  controller: cpfController,
-                  inputFormatters: [maskCpf],
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'CPF',
-                    labelStyle: const TextStyle(color: Colors.white70),
-                    prefixIcon: const Icon(Icons.person_outline, color: Colors.white70),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: Colors.white30),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: Colors.white),
-                    ),
-                  ),
+                _buildField(
+                  controller: cpfController, 
+                  label: 'CPF', 
+                  icon: Icons.person_outline, 
+                  formatters: [maskCpf],
+                  keyboardType: TextInputType.number
                 ),
                 const SizedBox(height: 16),
 
-                // Campo de Senha
-                TextField(
-                  controller: senhaController,
-                  obscureText: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Senha',
-                    labelStyle: const TextStyle(color: Colors.white70),
-                    prefixIcon: const Icon(Icons.lock_outline, color: Colors.white70),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: Colors.white30),
+                _buildField(
+                  controller: senhaController, 
+                  label: 'Chave Mestra', 
+                  icon: Icons.lock_outline, 
+                  obscure: obscureSenha,
+                  suffix: IconButton(
+                    icon: Icon(
+                      obscureSenha ? Icons.visibility : Icons.visibility_off, 
+                      color: Colors.white70
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: Colors.white),
-                    ),
+                    onPressed: () => setState(() => obscureSenha = !obscureSenha),
                   ),
                 ),
 
-                // Botão Esqueci minha senha
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -178,9 +147,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
 
-                // Botão de Login
                 SizedBox(
                   width: double.infinity,
                   height: 55,
@@ -191,6 +159,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       foregroundColor: Colors.white,
                       elevation: 5,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      disabledBackgroundColor: Colors.white10,
                     ),
                     child: loading
                         ? const SizedBox(
@@ -204,19 +173,54 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                   ),
                 ),
+                
                 const SizedBox(height: 24),
                 
-                // Link para Registro
+                // LINK PARA O REGISTRO
                 TextButton(
                   onPressed: () => Navigator.pushNamed(context, '/register'),
                   child: const Text(
                     'Ainda não tem acesso? Cadastre-se',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w400),
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildField({
+    required TextEditingController controller, 
+    required String label, 
+    required IconData icon, 
+    bool obscure = false, 
+    List<TextInputFormatter>? formatters, 
+    TextInputType keyboardType = TextInputType.text, 
+    Widget? suffix
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      inputFormatters: formatters,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label, 
+        labelStyle: const TextStyle(color: Colors.white70),
+        prefixIcon: Icon(icon, color: Colors.white70),
+        suffixIcon: suffix,
+        filled: true, 
+        fillColor: Colors.white.withOpacity(0.1),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15), 
+          borderSide: const BorderSide(color: Colors.white30)
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15), 
+          borderSide: const BorderSide(color: Colors.white)
         ),
       ),
     );
