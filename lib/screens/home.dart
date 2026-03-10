@@ -4,11 +4,11 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 
-// Importações das telas do projeto
+// Importações do projeto
+import '../utils/api_service.dart'; // <-- Ajuste o caminho se necessário
 import 'password_generator_screen.dart'; 
 import 'settings_screen.dart'; 
 
@@ -28,8 +28,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isLoading = true;
   bool isOffline = false;
   bool _estaAutenticado = false;
-
-  final String apiUrl = "https://cyan-grouse-960236.hostingersite.com/api/vault.php";
 
   final List<Color> listaCores = [
     Colors.blue, Colors.red, Colors.green, Colors.purple,
@@ -113,20 +111,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (usuarioId <= 0) return;
     
     try {
-      final response = await http.get(
-        Uri.parse('$apiUrl?acao=listar&usuario_id=$usuarioId'),
-      ).timeout(const Duration(seconds: 7));
+      final data = await ApiService.listarCofres(usuarioId);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          setState(() {
-            cofres = data['data'];
-            isOffline = false;
-            isLoading = false;
-          });
-          _saveToCache(data['data']);
-        }
+      if (data['success'] == true) {
+        setState(() {
+          cofres = data['data'];
+          isOffline = false;
+          isLoading = false;
+        });
+        _saveToCache(data['data']);
       }
     } catch (e) {
       setState(() { isOffline = true; isLoading = false; });
@@ -154,8 +147,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!confirmar) return;
 
     try {
-      final response = await http.get(Uri.parse('$apiUrl?acao=excluir&id=$id&usuario_id=$usuarioId'));
-      if (jsonDecode(response.body)['success'] == true) _fetchCofres();
+      final data = await ApiService.excluirCofre(id, usuarioId);
+      if (data['success'] == true) _fetchCofres();
     } catch (e) {
       _showErrorSnackBar("Erro ao excluir. Verifique sua conexão.");
     }
@@ -282,12 +275,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.settings_suggest_rounded, color: Colors.white70),
                 tooltip: "Configurações",
                 onPressed: () async {
-                  // AGUARDA O RETORNO DA TELA DE CONFIGURAÇÕES/BACKUP
                   await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const SettingsScreen()),
                   );
-                  // ATUALIZA OS DADOS AO VOLTAR
                   _fetchCofres();
                 },
               ),
@@ -402,9 +393,25 @@ class _HomeScreenState extends State<HomeScreen> {
                   'servico_senha': senhaController.text,
                   'color': _colorToHex(corSelecionada),
                 };
-                if (isEditing) payload['id'] = registro['id'];
-                final response = await http.post(Uri.parse('$apiUrl?acao=${isEditing ? 'editar' : 'adicionar'}'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(payload));
-                if (jsonDecode(response.body)['success']) { Navigator.pop(context); _fetchCofres(); }
+
+                try {
+                  Map<String, dynamic> responseData;
+                  if (isEditing) {
+                    payload['id'] = registro['id'];
+                    responseData = await ApiService.editarCofre(payload);
+                  } else {
+                    responseData = await ApiService.adicionarCofre(payload);
+                  }
+
+                  if (responseData['success'] == true) {
+                    if (context.mounted) Navigator.pop(context);
+                    _fetchCofres();
+                  } else {
+                    _showErrorSnackBar("Falha ao salvar. Verifique os dados.");
+                  }
+                } catch (e) {
+                   _showErrorSnackBar("Erro ao salvar. Verifique sua conexão.");
+                }
               },
               child: const Text("Salvar"),
             ),
