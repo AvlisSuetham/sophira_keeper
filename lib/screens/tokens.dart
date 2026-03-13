@@ -1,14 +1,17 @@
+// lib/screens/tokens.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:otp/otp.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+/// Componente de tokens 2FA + scanner QR
+/// Tokens: List<Map<String, dynamic>>
 class TokensWidget extends StatefulWidget {
-  final List<dynamic> tokens;
+  final List<Map<String, dynamic>> tokens;
   final bool isLoading;
   final Future<void> Function() onRefresh;
-  final Function(dynamic) onDelete;
+  final Future<void> Function(int) onDelete;
 
   const TokensWidget({
     super.key,
@@ -34,20 +37,15 @@ class _TokensWidgetState extends State<TokensWidget> {
 
   void _iniciarTimer() {
     _atualizarTempo();
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        _atualizarTempo();
-      }
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) _atualizarTempo();
     });
   }
 
   void _atualizarTempo() {
     setState(() {
       _tempoRestante = 30 - (DateTime.now().second % 30);
-      if (_tempoRestante == 0) {
-        _tempoRestante = 30;
-      }
+      if (_tempoRestante == 0) _tempoRestante = 30;
     });
   }
 
@@ -59,7 +57,6 @@ class _TokensWidgetState extends State<TokensWidget> {
 
   Color _hexToColor(String? hexCode) {
     if (hexCode == null || hexCode.isEmpty) return Colors.blue;
-
     try {
       final cleaned = hexCode.replaceFirst('#', '');
       final value = cleaned.length == 6 ? 'FF$cleaned' : cleaned;
@@ -71,30 +68,34 @@ class _TokensWidgetState extends State<TokensWidget> {
 
   String _gerarCodigo(String? secret) {
     if (secret == null || secret.isEmpty) return "000000";
-
     try {
       final seconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
-      return OTP.generateTOTPCodeString(
+      final code = OTP.generateTOTPCodeString(
         secret,
         seconds,
         algorithm: Algorithm.SHA1,
         isGoogle: true,
       );
+      // Garantir 6 dígitos (caso a lib retorne algo diferente)
+      return code.padLeft(6, '0');
     } catch (_) {
       return "000000";
     }
   }
 
-  void _copiar(BuildContext context, String codigo) {
-    Clipboard.setData(ClipboardData(text: codigo));
-
+  void _copiarParaAreaTransferencia(BuildContext context, String texto) {
+    Clipboard.setData(ClipboardData(text: texto));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Código copiado"),
-        duration: Duration(seconds: 1),
-      ),
+      const SnackBar(content: Text("Código copiado!"), duration: Duration(seconds: 1)),
     );
+  }
+
+  int _parseId(dynamic idField) {
+    if (idField is int) return idField;
+    if (idField is String) {
+      return int.tryParse(idField) ?? 0;
+    }
+    return 0;
   }
 
   @override
@@ -112,15 +113,13 @@ class _TokensWidgetState extends State<TokensWidget> {
             const Center(
               child: Column(
                 children: [
-                  Icon(Icons.security, size: 80, color: Colors.grey),
+                  Icon(Icons.security_rounded, size: 80, color: Colors.grey),
                   SizedBox(height: 16),
-                  Text(
-                    "Nenhum token cadastrado",
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  Text("Nenhum token 2FA cadastrado",
+                      style: TextStyle(color: Colors.grey, fontSize: 16)),
                 ],
               ),
-            )
+            ),
           ],
         ),
       );
@@ -133,22 +132,20 @@ class _TokensWidgetState extends State<TokensWidget> {
         itemCount: widget.tokens.length,
         itemBuilder: (context, index) {
           final token = widget.tokens[index];
+          final color = _hexToColor(token['color']?.toString());
+          final String codigoAtual = _gerarCodigo(token['servico_otp_secret']?.toString());
 
-          final color = _hexToColor(token['color']);
-          final codigo = _gerarCodigo(token['servico_otp_secret']);
-
-          final codigoFormatado =
-              "${codigo.substring(0, 3)} ${codigo.substring(3)}";
+          final String codigoFormatado = codigoAtual.length == 6
+              ? "${codigoAtual.substring(0, 3)} ${codigoAtual.substring(3)}"
+              : codigoAtual;
 
           return Card(
             elevation: 2,
             margin: const EdgeInsets.only(bottom: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             child: InkWell(
               borderRadius: BorderRadius.circular(15),
-              onTap: () => _copiar(context, codigo),
+              onTap: () => _copiarParaAreaTransferencia(context, codigoAtual),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -163,11 +160,8 @@ class _TokensWidgetState extends State<TokensWidget> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            token['servico_nome'] ?? "Serviço",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                            token['servico_nome']?.toString() ?? 'Serviço',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -184,36 +178,34 @@ class _TokensWidgetState extends State<TokensWidget> {
                             value: _tempoRestante / 30,
                             backgroundColor: Colors.grey[200],
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              _tempoRestante < 6 ? Colors.red : color,
-                            ),
+                                _tempoRestante < 6 ? Colors.red : color),
                           ),
                         ],
                       ),
                     ),
                     PopupMenuButton<String>(
-                      onSelected: (value) {
-                        if (value == 'copiar') {
-                          _copiar(context, codigo);
-                        }
-
+                      onSelected: (value) async {
                         if (value == 'excluir') {
-                          widget.onDelete(token['id']);
+                          final id = _parseId(token['id']);
+                          if (id > 0) {
+                            await widget.onDelete(id);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("ID inválido para exclusão")),
+                            );
+                          }
+                        } else if (value == 'copiar') {
+                          _copiarParaAreaTransferencia(context, codigoAtual);
                         }
                       },
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(
-                          value: "copiar",
-                          child: Text("Copiar"),
-                        ),
-                        PopupMenuItem(
-                          value: "excluir",
-                          child: Text(
-                            "Excluir",
-                            style: TextStyle(color: Colors.red),
-                          ),
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: 'copiar', child: Text('Copiar')),
+                        const PopupMenuItem(
+                          value: 'excluir',
+                          child: Text('Excluir', style: TextStyle(color: Colors.red)),
                         ),
                       ],
-                    )
+                    ),
                   ],
                 ),
               ),
@@ -225,6 +217,7 @@ class _TokensWidgetState extends State<TokensWidget> {
   }
 }
 
+/// Tela simples de scanner QR integrada (exportada aqui para comodidade)
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
 
@@ -234,8 +227,7 @@ class QRScannerScreen extends StatefulWidget {
 
 class _QRScannerScreenState extends State<QRScannerScreen> {
   final MobileScannerController cameraController = MobileScannerController();
-
-  bool _detectado = false;
+  bool _foiDetectado = false;
 
   @override
   void dispose() {
@@ -247,16 +239,12 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     return ValueListenableBuilder(
       valueListenable: cameraController,
       builder: (context, value, child) {
-        final torchState = (value as dynamic).torchState;
-
+        final torchState = (value as dynamic).torchState as TorchState?;
         final ligado = torchState == TorchState.on;
-
         return IconButton(
           onPressed: () => cameraController.toggleTorch(),
-          icon: Icon(
-            ligado ? Icons.flash_on : Icons.flash_off,
-            color: ligado ? Colors.yellow : Colors.white,
-          ),
+          icon: Icon(ligado ? Icons.flash_on : Icons.flash_off,
+              color: ligado ? Colors.yellow : Colors.white),
         );
       },
     );
@@ -266,16 +254,11 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     return ValueListenableBuilder(
       valueListenable: cameraController,
       builder: (context, value, child) {
-        final facing = (value as dynamic).cameraFacing;
-
+        final facing = (value as dynamic).cameraFacing as CameraFacing?;
         final traseira = facing == CameraFacing.back;
-
         return IconButton(
           onPressed: () => cameraController.switchCamera(),
-          icon: Icon(
-            traseira ? Icons.camera_rear : Icons.camera_front,
-            color: Colors.white,
-          ),
+          icon: Icon(traseira ? Icons.camera_rear : Icons.camera_front, color: Colors.white),
         );
       },
     );
@@ -285,7 +268,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Escanear QR Code"),
+        title: const Text('Escanear QR Code'),
         actions: [
           _buildTorchButton(),
           _buildCameraButton(),
@@ -294,14 +277,11 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       body: MobileScanner(
         controller: cameraController,
         onDetect: (capture) {
-          if (_detectado) return;
-
+          if (_foiDetectado) return;
           for (final barcode in capture.barcodes) {
             final raw = barcode.rawValue;
-
             if (raw != null && raw.isNotEmpty) {
-              _detectado = true;
-
+              setState(() => _foiDetectado = true);
               Navigator.pop(context, raw);
               break;
             }

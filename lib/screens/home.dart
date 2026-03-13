@@ -1,3 +1,4 @@
+// lib/screens/home.dart
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io' show Platform;
@@ -7,12 +8,12 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 
-// Importações do projeto
+// Importações do projeto (ajuste os caminhos conforme sua estrutura)
 import '../utils/api_service.dart';
-import 'password_generator_screen.dart'; 
-import 'settings_screen.dart'; 
+import 'password_generator_screen.dart';
+import 'settings_screen.dart';
 import 'vault.dart';
-import 'tokens.dart'; // NOVO: Componente e Scanner 2FA
+import 'tokens.dart'; // Componente tokens atualizado
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,17 +24,17 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final LocalAuthentication auth = LocalAuthentication();
-  
-  int _indiceAtual = 0; 
-  
+
+  int _indiceAtual = 0;
+
   String nomeUsuario = "";
   String inicialNome = "";
   int usuarioId = 0;
-  
-  // Listas de dados
+
+  // Tipagem forte para tokens e cofres
+  List<Map<String, dynamic>> tokens = [];
   List<dynamic> cofres = [];
-  List<dynamic> tokens = [];
-  
+
   bool isLoading = true;
   bool isOffline = false;
   bool _estaAutenticado = false;
@@ -47,10 +48,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _verificarBiometria(); 
+    _verificarBiometria();
   }
-
-  // --- LÓGICA DE BIOMETRIA ADAPTATIVA ---
 
   Future<void> _verificarBiometria() async {
     if (kIsWeb || (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS))) {
@@ -73,19 +72,17 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() => _estaAutenticado = true);
           _inicializarApp();
         } else {
-          SystemNavigator.pop(); 
+          SystemNavigator.pop();
         }
       } else {
         setState(() => _estaAutenticado = true);
         _inicializarApp();
       }
     } on PlatformException catch (_) {
-      setState(() => _estaAutenticado = true); 
+      setState(() => _estaAutenticado = true);
       _inicializarApp();
     }
   }
-
-  // --- LÓGICA DE SINCRONIZAÇÃO E CACHE ---
 
   Future<void> _inicializarApp() async {
     final prefs = await SharedPreferences.getInstance();
@@ -98,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadFromCache();
     if (usuarioId > 0) {
       _fetchCofres();
-      _fetchTokens(); // Busca os tokens junto com o cofre
+      _fetchTokens();
     }
   }
 
@@ -109,13 +106,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadFromCache() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     String? cachedCofre = prefs.getString('cache_vault_$usuarioId');
     String? cachedTokens = prefs.getString('cache_tokens_$usuarioId');
-    
+
     setState(() {
       if (cachedCofre != null) cofres = jsonDecode(cachedCofre);
-      if (cachedTokens != null) tokens = jsonDecode(cachedTokens);
+      if (cachedTokens != null) {
+        try {
+          final parsed = jsonDecode(cachedTokens);
+          if (parsed is List) {
+            tokens = parsed.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          }
+        } catch (_) {
+          tokens = [];
+        }
+      }
       isLoading = false;
     });
   }
@@ -130,28 +136,36 @@ class _HomeScreenState extends State<HomeScreen> {
           isOffline = false;
           isLoading = false;
         });
-        _saveToCache('cache_vault', data['data']);
+        _saveToCache('cache_vault', data['data'] as List<dynamic>);
       }
     } catch (e) {
-      setState(() { isOffline = true; isLoading = false; });
+      setState(() {
+        isOffline = true;
+        isLoading = false;
+      });
       _loadFromCache();
     }
   }
 
-  // NOVO: Método para buscar os Tokens
+  // Busca tokens (com cast seguro)
   Future<void> _fetchTokens() async {
     if (usuarioId <= 0) return;
     try {
       final data = await ApiService.listarTokens(usuarioId);
       if (data['success'] == true) {
-        setState(() {
-          tokens = data['data'];
-          isOffline = false;
-        });
-        _saveToCache('cache_tokens', data['data']);
+        final raw = data['data'];
+        if (raw is List) {
+          setState(() {
+            tokens = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            isOffline = false;
+          });
+          _saveToCache('cache_tokens', tokens);
+        }
       }
     } catch (e) {
-      setState(() { isOffline = true; });
+      setState(() {
+        isOffline = true;
+      });
     }
   }
 
@@ -171,7 +185,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // NOVO: Método para excluir Token
   Future<void> _excluirToken(int id) async {
     if (isOffline) {
       _showErrorSnackBar("Não é possível excluir enquanto estiver offline.");
@@ -189,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool> _mostrarConfirmacaoExclusao() async {
-    return await showDialog(
+    return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Excluir registro?"),
@@ -202,42 +215,35 @@ class _HomeScreenState extends State<HomeScreen> {
     ) ?? false;
   }
 
-  // NOVO: Lógica principal de processamento do QR Code
   Future<void> _escanearESalvarToken() async {
     if (isOffline) {
       _showErrorSnackBar("Conecte-se à internet para salvar um novo token.");
       return;
     }
 
-    // Abre a tela de scanner
+    // Abre a tela de scanner e espera resultado
     final code = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const QRScannerScreen()),
     );
 
-    if (code == null || code.isEmpty) return; // Usuário cancelou ou não leu nada
+    if (code == null || (code is String && code.isEmpty)) return;
 
-    // O formato padrão do Google Authenticator é:
-    // otpauth://totp/Emissor:Conta?secret=CHAVE&issuer=Emissor
     try {
       final uri = Uri.parse(code as String);
-      
+
       if (uri.scheme == 'otpauth' && uri.host == 'totp') {
         final secret = uri.queryParameters['secret'];
-        if (secret == null) {
+        if (secret == null || secret.isEmpty) {
           _showErrorSnackBar("QR Code inválido: Chave secreta não encontrada.");
           return;
         }
 
-        // Tenta pegar o nome do emissor (Issuer)
         String servicoNome = uri.queryParameters['issuer'] ?? 'Serviço Desconhecido';
-        
-        // Se o issuer não estiver nos parâmetros, tenta extrair do path
         if (servicoNome == 'Serviço Desconhecido' && uri.pathSegments.isNotEmpty) {
           servicoNome = Uri.decodeComponent(uri.pathSegments.last);
         }
 
-        // Cor aleatória para o card
         final randomColorHex = '#${listaCores[tokens.length % listaCores.length].value.toRadixString(16).substring(2)}';
 
         final payload = {
@@ -247,11 +253,13 @@ class _HomeScreenState extends State<HomeScreen> {
           'color': randomColorHex,
         };
 
-        // Salva na API
         final response = await ApiService.adicionarToken(payload);
         if (response['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Token adicionado com sucesso!", style: TextStyle(color: Colors.white)), backgroundColor: Colors.green));
-          // Vai para a aba de Tokens e atualiza a lista
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Token adicionado com sucesso!"), backgroundColor: Colors.green),
+            );
+          }
           setState(() => _indiceAtual = 1);
           _fetchTokens();
         } else {
@@ -264,8 +272,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _showErrorSnackBar("Erro ao processar QR Code.");
     }
   }
-
-  // --- INTERFACE ---
 
   @override
   Widget build(BuildContext context) {
@@ -281,27 +287,28 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildHeader(),
               Expanded(
-                child: _indiceAtual == 0 
-                  ? VaultWidget(
-                      cofres: cofres,
-                      isLoading: isLoading,
-                      onRefresh: _fetchCofres,
-                      onEdit: _showFormDialog,
-                      onDelete: _excluirCofre,
-                    )
-                  : TokensWidget( // Componente NOVO implementado
-                      tokens: tokens,
-                      isLoading: isLoading,
-                      onRefresh: _fetchTokens,
-                      onDelete: _excluirToken,
-                    ),
+                child: _indiceAtual == 0
+                    ? VaultWidget(
+                        cofres: cofres,
+                        isLoading: isLoading,
+                        onRefresh: _fetchCofres,
+                        onEdit: _showFormDialog,
+                        onDelete: _excluirCofre,
+                      )
+                    : TokensWidget(
+                        tokens: tokens,
+                        isLoading: isLoading,
+                        onRefresh: _fetchTokens,
+                        onDelete: _excluirToken, // agora tipado compatível
+                      ),
               ),
             ],
           ),
-          
           if (isOffline)
             Positioned(
-              bottom: 20, left: 20, right: 20,
+              bottom: 20,
+              left: 20,
+              right: 20,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 decoration: BoxDecoration(
@@ -354,11 +361,10 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               CircleAvatar(backgroundColor: Colors.white24, child: Text(inicialNome, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
               const Spacer(),
-              // Botão vinculado para o Scanner de QR Code
               IconButton(
-                icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white70), 
-                onPressed: _escanearESalvarToken, 
-                tooltip: "Escanear QR Code 2FA"
+                icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white70),
+                onPressed: _escanearESalvarToken,
+                tooltip: "Escanear QR Code 2FA",
               ),
               IconButton(
                 icon: const Icon(Icons.enhanced_encryption_rounded, color: Colors.white70),
@@ -385,22 +391,28 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- MODAIS E UTILITÁRIOS ---
-
   void _showFormDialog({Map<String, dynamic>? registro}) {
-    if (isOffline) { _showErrorSnackBar("Conecte-se à internet para salvar."); return; }
-    
-    final isEditing = registro != null;
-    final nomeController = TextEditingController(text: isEditing ? registro['servico_nome'] : '');
-    final userController = TextEditingController(text: isEditing ? registro['servico_usuario'] : '');
-    final senhaController = TextEditingController(text: isEditing ? registro['servico_senha'] : '');
-    
-    Color _hexToColor(String hexCode) {
-      try { return Color(int.parse(hexCode.replaceFirst('#', '0xFF'))); } catch (e) { return Colors.blue; }
+    if (isOffline) {
+      _showErrorSnackBar("Conecte-se à internet para salvar.");
+      return;
     }
+
+    final isEditing = registro != null;
+    final nomeController = TextEditingController(text: isEditing ? registro['servico_nome']?.toString() : '');
+    final userController = TextEditingController(text: isEditing ? registro['servico_usuario']?.toString() : '');
+    final senhaController = TextEditingController(text: isEditing ? registro['servico_senha']?.toString() : '');
+
+    Color _hexToColor(String hexCode) {
+      try {
+        return Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
+      } catch (e) {
+        return Colors.blue;
+      }
+    }
+
     String _colorToHex(Color color) => '#${color.value.toRadixString(16).substring(2)}';
-    
-    Color corSelecionada = isEditing ? _hexToColor(registro['color']) : Colors.blue;
+
+    Color corSelecionada = isEditing && registro!['color'] != null ? _hexToColor(registro['color']) : Colors.blue;
 
     showDialog(
       context: context,
@@ -417,10 +429,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 TextField(controller: senhaController, decoration: const InputDecoration(labelText: "Senha", prefixIcon: Icon(Icons.vpn_key))),
                 const SizedBox(height: 20),
                 Wrap(
-                  spacing: 8, runSpacing: 8,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: listaCores.map((cor) => GestureDetector(
                     onTap: () => setModalState(() => corSelecionada = cor),
-                    child: CircleAvatar(radius: 15, backgroundColor: cor, child: corSelecionada == cor ? const Icon(Icons.check, size: 16, color: Colors.white) : null),
+                    child: CircleAvatar(
+                      radius: 15,
+                      backgroundColor: cor,
+                      child: corSelecionada == cor ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+                    ),
                   )).toList(),
                 ),
               ],
@@ -454,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _showErrorSnackBar("Falha ao salvar. Verifique os dados.");
                   }
                 } catch (e) {
-                   _showErrorSnackBar("Erro ao salvar. Verifique sua conexão.");
+                  _showErrorSnackBar("Erro ao salvar. Verifique sua conexão.");
                 }
               },
               child: const Text("Salvar"),
@@ -465,7 +482,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showErrorSnackBar(String mensagem) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent));
+  void _showErrorSnackBar(String mensagem) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent));
 
   _logout() async {
     final prefs = await SharedPreferences.getInstance();
