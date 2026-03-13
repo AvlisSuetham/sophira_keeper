@@ -8,9 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 
 // Importações do projeto
-import '../utils/api_service.dart'; // <-- Ajuste o caminho se necessário
+import '../utils/api_service.dart';
 import 'password_generator_screen.dart'; 
 import 'settings_screen.dart'; 
+import 'vault.dart';
+import 'tokens.dart'; // NOVO: Componente e Scanner 2FA
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,10 +23,17 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final LocalAuthentication auth = LocalAuthentication();
+  
+  int _indiceAtual = 0; 
+  
   String nomeUsuario = "";
   String inicialNome = "";
   int usuarioId = 0;
+  
+  // Listas de dados
   List<dynamic> cofres = [];
+  List<dynamic> tokens = [];
+  
   bool isLoading = true;
   bool isOffline = false;
   bool _estaAutenticado = false;
@@ -87,43 +96,62 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     await _loadFromCache();
-    if (usuarioId > 0) _fetchCofres();
+    if (usuarioId > 0) {
+      _fetchCofres();
+      _fetchTokens(); // Busca os tokens junto com o cofre
+    }
   }
 
-  Future<void> _saveToCache(List<dynamic> data) async {
+  Future<void> _saveToCache(String key, List<dynamic> data) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('cache_vault_$usuarioId', jsonEncode(data));
+    await prefs.setString('${key}_$usuarioId', jsonEncode(data));
   }
 
   Future<void> _loadFromCache() async {
     final prefs = await SharedPreferences.getInstance();
-    String? cachedData = prefs.getString('cache_vault_$usuarioId');
-    if (cachedData != null) {
-      setState(() {
-        cofres = jsonDecode(cachedData);
-        isLoading = false;
-      });
-    }
+    
+    String? cachedCofre = prefs.getString('cache_vault_$usuarioId');
+    String? cachedTokens = prefs.getString('cache_tokens_$usuarioId');
+    
+    setState(() {
+      if (cachedCofre != null) cofres = jsonDecode(cachedCofre);
+      if (cachedTokens != null) tokens = jsonDecode(cachedTokens);
+      isLoading = false;
+    });
   }
 
-  /// FUNÇÃO PRINCIPAL DE ATUALIZAÇÃO
   Future<void> _fetchCofres() async {
     if (usuarioId <= 0) return;
-    
     try {
       final data = await ApiService.listarCofres(usuarioId);
-
       if (data['success'] == true) {
         setState(() {
           cofres = data['data'];
           isOffline = false;
           isLoading = false;
         });
-        _saveToCache(data['data']);
+        _saveToCache('cache_vault', data['data']);
       }
     } catch (e) {
       setState(() { isOffline = true; isLoading = false; });
       _loadFromCache();
+    }
+  }
+
+  // NOVO: Método para buscar os Tokens
+  Future<void> _fetchTokens() async {
+    if (usuarioId <= 0) return;
+    try {
+      final data = await ApiService.listarTokens(usuarioId);
+      if (data['success'] == true) {
+        setState(() {
+          tokens = data['data'];
+          isOffline = false;
+        });
+        _saveToCache('cache_tokens', data['data']);
+      }
+    } catch (e) {
+      setState(() { isOffline = true; });
     }
   }
 
@@ -132,18 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _showErrorSnackBar("Não é possível excluir enquanto estiver offline.");
       return;
     }
-    bool confirmar = await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Excluir registro?"),
-        content: const Text("Esta ação removerá o dado do servidor."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancelar")),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Excluir", style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    ) ?? false;
-
+    bool confirmar = await _mostrarConfirmacaoExclusao();
     if (!confirmar) return;
 
     try {
@@ -154,16 +171,101 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _buildAvatarIcon(String texto, Color cor, {double tamanho = 25}) {
-    return CircleAvatar(
-      radius: tamanho,
-      backgroundColor: cor.withOpacity(0.15),
-      child: Text(
-        texto.isNotEmpty ? texto[0].toUpperCase() : "?",
-        style: TextStyle(color: cor, fontWeight: FontWeight.bold, fontSize: tamanho * 0.8),
-      ),
-    );
+  // NOVO: Método para excluir Token
+  Future<void> _excluirToken(int id) async {
+    if (isOffline) {
+      _showErrorSnackBar("Não é possível excluir enquanto estiver offline.");
+      return;
+    }
+    bool confirmar = await _mostrarConfirmacaoExclusao();
+    if (!confirmar) return;
+
+    try {
+      final data = await ApiService.excluirToken(id, usuarioId);
+      if (data['success'] == true) _fetchTokens();
+    } catch (e) {
+      _showErrorSnackBar("Erro ao excluir. Verifique sua conexão.");
+    }
   }
+
+  Future<bool> _mostrarConfirmacaoExclusao() async {
+    return await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Excluir registro?"),
+        content: const Text("Esta ação removerá o dado do servidor."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancelar")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Excluir", style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  // NOVO: Lógica principal de processamento do QR Code
+  Future<void> _escanearESalvarToken() async {
+    if (isOffline) {
+      _showErrorSnackBar("Conecte-se à internet para salvar um novo token.");
+      return;
+    }
+
+    // Abre a tela de scanner
+    final code = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+    );
+
+    if (code == null || code.isEmpty) return; // Usuário cancelou ou não leu nada
+
+    // O formato padrão do Google Authenticator é:
+    // otpauth://totp/Emissor:Conta?secret=CHAVE&issuer=Emissor
+    try {
+      final uri = Uri.parse(code as String);
+      
+      if (uri.scheme == 'otpauth' && uri.host == 'totp') {
+        final secret = uri.queryParameters['secret'];
+        if (secret == null) {
+          _showErrorSnackBar("QR Code inválido: Chave secreta não encontrada.");
+          return;
+        }
+
+        // Tenta pegar o nome do emissor (Issuer)
+        String servicoNome = uri.queryParameters['issuer'] ?? 'Serviço Desconhecido';
+        
+        // Se o issuer não estiver nos parâmetros, tenta extrair do path
+        if (servicoNome == 'Serviço Desconhecido' && uri.pathSegments.isNotEmpty) {
+          servicoNome = Uri.decodeComponent(uri.pathSegments.last);
+        }
+
+        // Cor aleatória para o card
+        final randomColorHex = '#${listaCores[tokens.length % listaCores.length].value.toRadixString(16).substring(2)}';
+
+        final payload = {
+          'usuario_id': usuarioId,
+          'servico_nome': servicoNome,
+          'servico_otp_secret': secret.toUpperCase(),
+          'color': randomColorHex,
+        };
+
+        // Salva na API
+        final response = await ApiService.adicionarToken(payload);
+        if (response['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Token adicionado com sucesso!", style: TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+          // Vai para a aba de Tokens e atualiza a lista
+          setState(() => _indiceAtual = 1);
+          _fetchTokens();
+        } else {
+          _showErrorSnackBar("Falha ao salvar token no servidor.");
+        }
+      } else {
+        _showErrorSnackBar("Formato de QR Code não suportado.");
+      }
+    } catch (e) {
+      _showErrorSnackBar("Erro ao processar QR Code.");
+    }
+  }
+
+  // --- INTERFACE ---
 
   @override
   Widget build(BuildContext context) {
@@ -179,50 +281,27 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildHeader(),
               Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _fetchCofres,
-                  child: isLoading && cofres.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
-                    : cofres.isEmpty 
-                      ? ListView(children: const [SizedBox(height: 100), Center(child: Text("Nenhum registro encontrado."))])
-                      : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-                        itemCount: cofres.length,
-                        itemBuilder: (context, index) {
-                          final item = cofres[index];
-                          final Color cor = _hexToColor(item['color'] ?? '#2196F3');
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            elevation: 0.5,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                              side: BorderSide(color: Colors.grey.withOpacity(0.1)),
-                            ),
-                            child: ListTile(
-                              onTap: () => _showDetailsModal(item),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              leading: _buildAvatarIcon(item['servico_nome'], cor),
-                              title: Text(item['servico_nome'], style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A1B4B))),
-                              subtitle: Text(item['servico_usuario']),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(icon: const Icon(Icons.edit_outlined, color: Colors.blue, size: 20), onPressed: () => _showFormDialog(registro: item)),
-                                  IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () => _excluirCofre(int.parse(item['id'].toString()))),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                ),
+                child: _indiceAtual == 0 
+                  ? VaultWidget(
+                      cofres: cofres,
+                      isLoading: isLoading,
+                      onRefresh: _fetchCofres,
+                      onEdit: _showFormDialog,
+                      onDelete: _excluirCofre,
+                    )
+                  : TokensWidget( // Componente NOVO implementado
+                      tokens: tokens,
+                      isLoading: isLoading,
+                      onRefresh: _fetchTokens,
+                      onDelete: _excluirToken,
+                    ),
               ),
             ],
           ),
           
           if (isOffline)
             Positioned(
-              bottom: 90, left: 20, right: 20,
+              bottom: 20, left: 20, right: 20,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 decoration: BoxDecoration(
@@ -241,12 +320,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _indiceAtual,
+        onTap: (index) => setState(() => _indiceAtual = index),
+        selectedItemColor: const Color(0xFF1A1B4B),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.lock_rounded), label: 'Senhas'),
+          BottomNavigationBarItem(icon: Icon(Icons.security_rounded), label: 'Tokens 2FA'),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showFormDialog(),
+        onPressed: () => _indiceAtual == 0 ? _showFormDialog() : _escanearESalvarToken(),
         backgroundColor: const Color(0xFFE91E63),
         elevation: 4,
-        label: const Text("NOVO ACESSO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        icon: const Icon(Icons.add, color: Colors.white),
+        label: Text(_indiceAtual == 0 ? "NOVO ACESSO" : "LER QR CODE", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        icon: Icon(_indiceAtual == 0 ? Icons.add : Icons.qr_code_scanner, color: Colors.white),
       ),
     );
   }
@@ -266,6 +354,12 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               CircleAvatar(backgroundColor: Colors.white24, child: Text(inicialNome, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
               const Spacer(),
+              // Botão vinculado para o Scanner de QR Code
+              IconButton(
+                icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white70), 
+                onPressed: _escanearESalvarToken, 
+                tooltip: "Escanear QR Code 2FA"
+              ),
               IconButton(
                 icon: const Icon(Icons.enhanced_encryption_rounded, color: Colors.white70),
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PasswordGeneratorScreen())),
@@ -275,11 +369,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.settings_suggest_rounded, color: Colors.white70),
                 tooltip: "Configurações",
                 onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                  );
+                  await Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
                   _fetchCofres();
+                  _fetchTokens();
                 },
               ),
               IconButton(icon: const Icon(Icons.logout_rounded, color: Colors.redAccent), onPressed: _logout, tooltip: "Sair"),
@@ -295,67 +387,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- MODAIS E UTILITÁRIOS ---
 
-  void _showDetailsModal(Map<String, dynamic> item) {
-    final Color corFundo = _hexToColor(item['color'] ?? '#2196F3');
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(25),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 20),
-            _buildAvatarIcon(item['servico_nome'], corFundo, tamanho: 40),
-            const SizedBox(height: 15),
-            Text(item['servico_nome'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const Divider(height: 40),
-            _buildDetailRow("Usuário", item['servico_usuario'], Icons.person_outline),
-            const SizedBox(height: 20),
-            _buildDetailRow("Senha", item['servico_senha'], Icons.lock_outline),
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String valor, IconData icon) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-          child: Row(
-            children: [
-              Icon(icon, size: 22, color: Colors.blueGrey),
-              const SizedBox(width: 12),
-              Expanded(child: Text(valor, style: const TextStyle(fontSize: 16, letterSpacing: 0.5))),
-              IconButton(
-                icon: const Icon(Icons.copy_rounded, size: 20, color: Colors.blue),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: valor));
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label copiado!"), behavior: SnackBarBehavior.floating));
-                },
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   void _showFormDialog({Map<String, dynamic>? registro}) {
     if (isOffline) { _showErrorSnackBar("Conecte-se à internet para salvar."); return; }
+    
     final isEditing = registro != null;
     final nomeController = TextEditingController(text: isEditing ? registro['servico_nome'] : '');
     final userController = TextEditingController(text: isEditing ? registro['servico_usuario'] : '');
     final senhaController = TextEditingController(text: isEditing ? registro['servico_senha'] : '');
+    
+    Color _hexToColor(String hexCode) {
+      try { return Color(int.parse(hexCode.replaceFirst('#', '0xFF'))); } catch (e) { return Colors.blue; }
+    }
+    String _colorToHex(Color color) => '#${color.value.toRadixString(16).substring(2)}';
+    
     Color corSelecionada = isEditing ? _hexToColor(registro['color']) : Colors.blue;
 
     showDialog(
@@ -422,16 +466,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showErrorSnackBar(String mensagem) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent));
-
-  Color _hexToColor(String hexCode) {
-    try {
-      return Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
-    } catch (e) {
-      return Colors.blue;
-    }
-  }
-
-  String _colorToHex(Color color) => '#${color.value.toRadixString(16).substring(2)}';
 
   _logout() async {
     final prefs = await SharedPreferences.getInstance();

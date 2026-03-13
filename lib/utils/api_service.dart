@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   static const String baseUrl = "https://cyan-grouse-960236.hostingersite.com/api";
   static const String _usuario = "$baseUrl/usuario.php";
-  static const String _vault = "$baseUrl/vault.php"; // Endpoint do cofre
+  static const String _vault = "$baseUrl/vault.php"; 
+  static const String _tokens = "$baseUrl/tokens.php";
 
   // --- MÉTODOS DE USUÁRIO ---
   
@@ -61,6 +62,31 @@ class ApiService {
   static Future<Map<String, dynamic>> excluirCofre(int id, int usuarioId) async {
     final response = await http.get(
       Uri.parse('$_vault?acao=excluir&id=$id&usuario_id=$usuarioId'),
+    );
+    return jsonDecode(response.body);
+  }
+
+  // --- MÉTODOS DE TOKENS 2FA ---
+
+  static Future<Map<String, dynamic>> listarTokens(int usuarioId) async {
+    final response = await http.get(
+      Uri.parse('$_tokens?acao=listar&usuario_id=$usuarioId'),
+    ).timeout(const Duration(seconds: 7));
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> adicionarToken(Map<String, dynamic> payload) async {
+    final response = await http.post(
+      Uri.parse('$_tokens?acao=adicionar'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> excluirToken(int id, int usuarioId) async {
+    final response = await http.get(
+      Uri.parse('$_tokens?acao=excluir&id=$id&usuario_id=$usuarioId'),
     );
     return jsonDecode(response.body);
   }
