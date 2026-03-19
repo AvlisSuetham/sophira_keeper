@@ -29,6 +29,10 @@ class _TokensWidgetState extends State<TokensWidget> {
   Timer? _timer;
   int _tempoRestante = 30;
 
+  // Cores base para a UI
+  final Color _deepBlue = const Color(0xFF1A1B4B);
+  final Color _neonPink = const Color(0xFFE91E63);
+
   @override
   void initState() {
     super.initState();
@@ -56,13 +60,13 @@ class _TokensWidgetState extends State<TokensWidget> {
   }
 
   Color _hexToColor(String? hexCode) {
-    if (hexCode == null || hexCode.isEmpty) return Colors.blue;
+    if (hexCode == null || hexCode.isEmpty) return _deepBlue;
     try {
       final cleaned = hexCode.replaceFirst('#', '');
       final value = cleaned.length == 6 ? 'FF$cleaned' : cleaned;
       return Color(int.parse('0x$value'));
     } catch (_) {
-      return Colors.blue;
+      return _deepBlue;
     }
   }
 
@@ -76,7 +80,6 @@ class _TokensWidgetState extends State<TokensWidget> {
         algorithm: Algorithm.SHA1,
         isGoogle: true,
       );
-      // Garantir 6 dígitos (caso a lib retorne algo diferente)
       return code.padLeft(6, '0');
     } catch (_) {
       return "000000";
@@ -86,37 +89,69 @@ class _TokensWidgetState extends State<TokensWidget> {
   void _copiarParaAreaTransferencia(BuildContext context, String texto) {
     Clipboard.setData(ClipboardData(text: texto));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Código copiado!"), duration: Duration(seconds: 1)),
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.white),
+            SizedBox(width: 12),
+            Text("Código 2FA copiado!"),
+          ],
+        ),
+        backgroundColor: _deepBlue,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
   int _parseId(dynamic idField) {
     if (idField is int) return idField;
-    if (idField is String) {
-      return int.tryParse(idField) ?? 0;
-    }
+    if (idField is String) return int.tryParse(idField) ?? 0;
     return 0;
   }
 
   @override
   Widget build(BuildContext context) {
     if (widget.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: CircularProgressIndicator(color: _neonPink),
+      );
     }
 
     if (widget.tokens.isEmpty) {
       return RefreshIndicator(
         onRefresh: widget.onRefresh,
+        color: _neonPink,
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            SizedBox(height: MediaQuery.of(context).size.height * 0.3),
-            const Center(
+            SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+            Center(
               child: Column(
                 children: [
-                  Icon(Icons.security_rounded, size: 80, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text("Nenhum token 2FA cadastrado",
-                      style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: _deepBlue.withOpacity(0.05),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.security_rounded, size: 80, color: _deepBlue.withOpacity(0.5)),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    "Nenhum token 2FA cadastrado",
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Toque no botão flutuante para escanear um QR Code",
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  ),
                 ],
               ),
             ),
@@ -127,8 +162,10 @@ class _TokensWidgetState extends State<TokensWidget> {
 
     return RefreshIndicator(
       onRefresh: widget.onRefresh,
+      color: _neonPink,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        physics: const AlwaysScrollableScrollPhysics(),
         itemCount: widget.tokens.length,
         itemBuilder: (context, index) {
           final token = widget.tokens[index];
@@ -139,74 +176,133 @@ class _TokensWidgetState extends State<TokensWidget> {
               ? "${codigoAtual.substring(0, 3)} ${codigoAtual.substring(3)}"
               : codigoAtual;
 
-          return Card(
-            elevation: 2,
+          final bool estaExpirando = _tempoRestante <= 5;
+
+          return Container(
             margin: const EdgeInsets.only(bottom: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(15),
-              onTap: () => _copiarParaAreaTransferencia(context, codigoAtual),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: color.withOpacity(0.15),
-                      child: Icon(Icons.shield, color: color),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: _deepBlue.withOpacity(0.06),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                )
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _copiarParaAreaTransferencia(context, codigoAtual),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      Row(
                         children: [
-                          Text(
-                            token['servico_nome']?.toString() ?? 'Serviço',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          // Ícone do Serviço
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(Icons.shield_rounded, color: color, size: 28),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            codigoFormatado,
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2,
-                              color: Theme.of(context).primaryColor,
+                          const SizedBox(width: 16),
+                          
+                          // Nome do Serviço e Código
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  token['servico_nome']?.toString() ?? 'Serviço',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  codigoFormatado,
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 4,
+                                    fontFamily: 'monospace', // Dá um ar tech/cyberpunk
+                                    color: estaExpirando ? _neonPink : _deepBlue,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          LinearProgressIndicator(
-                            value: _tempoRestante / 30,
-                            backgroundColor: Colors.grey[200],
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                                _tempoRestante < 6 ? Colors.red : color),
+                          
+                          // Menu de Opções
+                          PopupMenuButton<String>(
+                            icon: Icon(Icons.more_vert_rounded, color: Colors.grey[400]),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            onSelected: (value) async {
+                              if (value == 'excluir') {
+                                final id = _parseId(token['id']);
+                                if (id > 0) {
+                                  await widget.onDelete(id);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("ID inválido para exclusão")),
+                                  );
+                                }
+                              } else if (value == 'copiar') {
+                                _copiarParaAreaTransferencia(context, codigoAtual);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'copiar',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.copy_rounded, size: 20, color: Colors.black54),
+                                    SizedBox(width: 12),
+                                    Text('Copiar'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'excluir',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete_outline_rounded, size: 20, color: Colors.red),
+                                    SizedBox(width: 12),
+                                    Text('Excluir', style: TextStyle(color: Colors.red)),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ),
-                    PopupMenuButton<String>(
-                      onSelected: (value) async {
-                        if (value == 'excluir') {
-                          final id = _parseId(token['id']);
-                          if (id > 0) {
-                            await widget.onDelete(id);
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("ID inválido para exclusão")),
-                            );
-                          }
-                        } else if (value == 'copiar') {
-                          _copiarParaAreaTransferencia(context, codigoAtual);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(value: 'copiar', child: Text('Copiar')),
-                        const PopupMenuItem(
-                          value: 'excluir',
-                          child: Text('Excluir', style: TextStyle(color: Colors.red)),
+                      const SizedBox(height: 16),
+                      
+                      // Barra de Progresso Animada
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          height: 6,
+                          child: LinearProgressIndicator(
+                            value: _tempoRestante / 30,
+                            backgroundColor: Colors.grey[100],
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              estaExpirando ? _neonPink : color.withOpacity(0.8),
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -217,7 +313,7 @@ class _TokensWidgetState extends State<TokensWidget> {
   }
 }
 
-/// Tela simples de scanner QR integrada (exportada aqui para comodidade)
+/// Tela simples de scanner QR integrada
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
 
@@ -235,32 +331,20 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     super.dispose();
   }
 
+  // Substituídos os ValueListenableBuilders por chamadas diretas (compatível com v7.2.0)
   Widget _buildTorchButton() {
-    return ValueListenableBuilder(
-      valueListenable: cameraController,
-      builder: (context, value, child) {
-        final torchState = (value as dynamic).torchState as TorchState?;
-        final ligado = torchState == TorchState.on;
-        return IconButton(
-          onPressed: () => cameraController.toggleTorch(),
-          icon: Icon(ligado ? Icons.flash_on : Icons.flash_off,
-              color: ligado ? Colors.yellow : Colors.white),
-        );
-      },
+    return IconButton(
+      onPressed: () => cameraController.toggleTorch(),
+      icon: const Icon(Icons.flashlight_on_rounded, color: Colors.white),
+      tooltip: 'Alternar Flash',
     );
   }
 
   Widget _buildCameraButton() {
-    return ValueListenableBuilder(
-      valueListenable: cameraController,
-      builder: (context, value, child) {
-        final facing = (value as dynamic).cameraFacing as CameraFacing?;
-        final traseira = facing == CameraFacing.back;
-        return IconButton(
-          onPressed: () => cameraController.switchCamera(),
-          icon: Icon(traseira ? Icons.camera_rear : Icons.camera_front, color: Colors.white),
-        );
-      },
+    return IconButton(
+      onPressed: () => cameraController.switchCamera(),
+      icon: const Icon(Icons.cameraswitch_rounded, color: Colors.white),
+      tooltip: 'Alternar Câmera',
     );
   }
 
@@ -268,25 +352,44 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Escanear QR Code'),
+        title: const Text('Escanear QR Code', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1A1B4B), // Combinando com o tema escuro/azul
+        foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           _buildTorchButton(),
           _buildCameraButton(),
+          const SizedBox(width: 8),
         ],
       ),
-      body: MobileScanner(
-        controller: cameraController,
-        onDetect: (capture) {
-          if (_foiDetectado) return;
-          for (final barcode in capture.barcodes) {
-            final raw = barcode.rawValue;
-            if (raw != null && raw.isNotEmpty) {
-              setState(() => _foiDetectado = true);
-              Navigator.pop(context, raw);
-              break;
-            }
-          }
-        },
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: cameraController,
+            onDetect: (capture) {
+              if (_foiDetectado) return;
+              for (final barcode in capture.barcodes) {
+                final raw = barcode.rawValue;
+                if (raw != null && raw.isNotEmpty) {
+                  setState(() => _foiDetectado = true);
+                  Navigator.pop(context, raw);
+                  break;
+                }
+              }
+            },
+          ),
+          // Overlay para simular a área de leitura
+          Center(
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFFE91E63), width: 3),
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
