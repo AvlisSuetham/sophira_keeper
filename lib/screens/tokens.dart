@@ -5,8 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:otp/otp.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-/// Componente de tokens 2FA + scanner QR
-/// Tokens: List<Map<String, dynamic>>
 class TokensWidget extends StatefulWidget {
   final List<Map<String, dynamic>> tokens;
   final bool isLoading;
@@ -353,7 +351,6 @@ class _TokensWidgetState extends State<TokensWidget> {
   }
 }
 
-/// Tela simples de scanner QR integrada
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
 

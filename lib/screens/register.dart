@@ -1,8 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
+import '../utils/api_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -13,6 +12,7 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController nomeController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
   final TextEditingController cpfController = TextEditingController();
   final TextEditingController senhaController = TextEditingController();
 
@@ -41,6 +41,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     nomeController.dispose();
+    emailController.dispose();
     cpfController.dispose();
     senhaController.dispose();
     super.dispose();
@@ -57,7 +58,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
   }
 
-  bool _isSenhaForte() => temMinimo && temMaiuscula && temMinuscula && temNumero && temEspecial;
+  bool _isSenhaForte() =>
+      temMinimo && temMaiuscula && temMinuscula && temNumero && temEspecial;
+
+  bool _isEmailValido(String email) {
+    return RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email);
+  }
 
   // Função para abrir o Modal de Termos
   void _showTermsModal() {
@@ -75,25 +81,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: Column(
           children: [
             Container(
-              width: 50, height: 5,
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10)),
+              width: 50,
+              height: 5,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             const SizedBox(height: 20),
             const Text(
               'Termos e Condições',
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 20),
-            Expanded(
+            const Expanded(
               child: SingleChildScrollView(
-                child: const Text(
+                child: Text(
                   "1. Aceitação dos Termos\nAo criar uma conta no Sophira Keeper, você concorda integralmente com estas regras...\n\n"
                   "2. Descrição do Serviço\nO Sophira Keeper permite o armazenamento criptografado de senhas...\n\n"
                   "3. O Modelo de Segurança e a 'Chave Mestra'\nArquitetura de Segurança: O usuário possui a chave de acesso principal. Em caso de perda, a recuperação é possível exclusivamente através do contato com a gerência mediante comprovação de identidade.\n\n"
                   "4. Privacidade e Dados Pessoais\nOperamos em conformidade com a LGPD.\n\n"
                   "5. Obrigações do Usuário\nUtilizar uma senha mestra forte e exclusiva.\n\n"
                   "6. Limitação de Responsabilidade\nNão nos responsabilizamos por negligência do usuário ou furto do dispositivo.",
-                  style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -105,9 +123,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2196F3),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
                 ),
-                child: const Text('ENTENDI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'ENTENDI',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             )
           ],
@@ -117,11 +143,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> register() async {
+    final nome = nomeController.text.trim();
+    final email = emailController.text.trim().toLowerCase();
     final cpfLimpo = maskCpf.getUnmaskedText();
 
-    if (nomeController.text.isEmpty || cpfLimpo.isEmpty || !_isSenhaForte()) {
+    if (nome.isEmpty || email.isEmpty || cpfLimpo.isEmpty || !_isSenhaForte()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Preencha todos os campos e atenda aos requisitos de senha.')),
+        const SnackBar(
+          content: Text('Preencha todos os campos e atenda aos requisitos de senha.'),
+        ),
+      );
+      return;
+    }
+
+    if (!_isEmailValido(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email inválido.')),
+      );
+      return;
+    }
+
+    if (cpfLimpo.length != 11) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('CPF inválido.')),
       );
       return;
     }
@@ -129,28 +173,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => loading = true);
 
     try {
-      final response = await http.post(
-        Uri.parse('https://cyan-grouse-960236.hostingersite.com/api/usuario.php?acao=cadastro'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'nome': nomeController.text,
-          'cpf': cpfLimpo,
-          'senha': senhaController.text,
-        }),
+      final response = await ApiService.cadastro(
+        nome,
+        email,
+        cpfLimpo,
+        senhaController.text,
       );
 
-      final data = jsonDecode(response.body);
+      if (!mounted) return;
       setState(() => loading = false);
 
-      if (data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Conta criada com sucesso!')));
-        Navigator.pop(context); // Retorna para a tela anterior após sucesso
+      if (response['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Conta criada com sucesso!')),
+        );
+        Navigator.pop(context);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['error'] ?? 'Erro no cadastro')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['error'] ?? 'Erro no cadastro')),
+        );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro de conexão. Verifique sua internet.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro de conexão. Verifique sua internet.')),
+      );
     }
   }
 
@@ -174,46 +222,69 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.person_add_outlined, size: 80, color: Colors.white24),
+                  const Icon(
+                    Icons.person_add_outlined,
+                    size: 80,
+                    color: Colors.white24,
+                  ),
                   const SizedBox(height: 20),
                   const Text(
-                    'Nova Conta', 
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)
+                    'Nova Conta',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(height: 40),
-                  
-                  _buildField(nomeController, 'Nome Completo', Icons.badge_outlined),
-                  const SizedBox(height: 16),
-                  
+
                   _buildField(
-                    cpfController, 
-                    'CPF', 
-                    Icons.person_outline, 
-                    formatters: [maskCpf], 
-                    keyboardType: TextInputType.number
+                    nomeController,
+                    'Nome Completo',
+                    Icons.badge_outlined,
                   ),
                   const SizedBox(height: 16),
-                  
+
                   _buildField(
-                    senhaController, 
-                    'Chave Mestra', 
-                    Icons.lock_outline, 
+                    emailController,
+                    'E-mail',
+                    Icons.email_outlined,
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildField(
+                    cpfController,
+                    'CPF',
+                    Icons.person_outline,
+                    formatters: [maskCpf],
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildField(
+                    senhaController,
+                    'Chave Mestra',
+                    Icons.lock_outline,
                     obscure: obscureSenha,
                     suffix: IconButton(
-                      icon: Icon(obscureSenha ? Icons.visibility : Icons.visibility_off, color: Colors.white70),
+                      icon: Icon(
+                        obscureSenha ? Icons.visibility : Icons.visibility_off,
+                        color: Colors.white70,
+                      ),
                       onPressed: () => setState(() => obscureSenha = !obscureSenha),
                     ),
                   ),
-                  
+
                   // --- INDICADORES VISUAIS DE SENHA (OTIMIZADO) ---
                   Container(
                     width: double.infinity,
                     margin: const EdgeInsets.only(top: 16),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.black26, 
+                      color: Colors.black26,
                       borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.white12)
+                      border: Border.all(color: Colors.white12),
                     ),
                     child: Wrap(
                       spacing: 12,
@@ -229,7 +300,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
 
                   const SizedBox(height: 32),
-                  
+
                   // --- BOTÃO DE CRIAR CONTA ---
                   SizedBox(
                     width: double.infinity,
@@ -239,58 +310,78 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFE91E63),
                         disabledBackgroundColor: Colors.white10,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
                         elevation: 5,
                       ),
-                      child: loading 
-                        ? const SizedBox(
-                            width: 24, height: 24, 
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                          ) 
-                        : const Text('CRIAR MINHA CONTA', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
+                      child: loading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'CRIAR MINHA CONTA',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // --- TERMOS DE CONDIÇÕES ---
                   GestureDetector(
                     onTap: _showTermsModal,
                     child: const Text.rich(
                       TextSpan(
                         text: 'Ao cadastrar, você concorda com os ',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
                         children: [
                           TextSpan(
                             text: 'termos e condições',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.underline,
+                            ),
                           ),
                         ],
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  
+
                   const SizedBox(height: 40),
-                  
+
                   // --- ESQUEMA DE VOLTAR PARA O LOGIN ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Text(
-                        'Já possui uma conta?', 
-                        style: TextStyle(color: Colors.white70, fontSize: 15)
+                        'Já possui uma conta?',
+                        style: TextStyle(color: Colors.white70, fontSize: 15),
                       ),
                       TextButton(
                         onPressed: () {
-                          // Se você chegou aqui via Navigator.push() na tela de Login:
                           Navigator.pop(context);
-                          
-                          // *Nota: Caso sua navegação seja diferente, você pode usar:*
-                          // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
                         },
                         child: const Text(
-                          'Faça Login', 
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)
+                          'Faça Login',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                       )
                     ],
@@ -311,20 +402,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          valid ? Icons.check_circle : Icons.circle_outlined, 
-          color: valid ? Colors.greenAccent : Colors.white24, 
-          size: 16
+          valid ? Icons.check_circle : Icons.circle_outlined,
+          color: valid ? Colors.greenAccent : Colors.white24,
+          size: 16,
         ),
         const SizedBox(width: 6),
         Text(
-          texto, 
-          style: TextStyle(color: valid ? Colors.greenAccent : Colors.white70, fontSize: 12)
+          texto,
+          style: TextStyle(
+            color: valid ? Colors.greenAccent : Colors.white70,
+            fontSize: 12,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildField(TextEditingController c, String l, IconData i, {bool obscure = false, List<TextInputFormatter>? formatters, TextInputType keyboardType = TextInputType.text, Widget? suffix}) {
+  Widget _buildField(
+    TextEditingController c,
+    String l,
+    IconData i, {
+    bool obscure = false,
+    List<TextInputFormatter>? formatters,
+    TextInputType keyboardType = TextInputType.text,
+    Widget? suffix,
+  }) {
     return TextField(
       controller: c,
       obscureText: obscure,
@@ -332,15 +434,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
       keyboardType: keyboardType,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
-        labelText: l, 
+        labelText: l,
         labelStyle: const TextStyle(color: Colors.white70),
         prefixIcon: Icon(i, color: Colors.white70),
         suffixIcon: suffix,
-        filled: true, 
+        filled: true,
         fillColor: Colors.white.withOpacity(0.1),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.white30)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.white)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Colors.white30),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Colors.white),
+        ),
       ),
     );
   }

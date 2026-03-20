@@ -17,75 +17,197 @@ class VaultWidget extends StatelessWidget {
     required this.onDelete,
   });
 
+  // Converte Hex para Color com suporte a fallback
   Color _hexToColor(String hexCode) {
     try {
       return Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
     } catch (e) {
-      return Colors.blue;
+      return const Color(0xFF6366F1);
     }
   }
 
-  Widget _buildAvatarIcon(String texto, Color cor, {double tamanho = 25}) {
-    return CircleAvatar(
-      radius: tamanho,
-      backgroundColor: cor.withOpacity(0.15),
-      child: Text(
-        texto.isNotEmpty ? texto[0].toUpperCase() : "?",
-        style: TextStyle(color: cor, fontWeight: FontWeight.bold, fontSize: tamanho * 0.8),
+  // Ícone de Avatar estilizado com gradiente
+  Widget _buildAvatarIcon(String texto, Color cor, {double tamanho = 28}) {
+    return Container(
+      width: tamanho * 2,
+      height: tamanho * 2,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [cor.withOpacity(0.7), cor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: cor.withOpacity(0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          texto.isNotEmpty ? texto[0].toUpperCase() : "?",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: tamanho * 0.9,
+          ),
+        ),
       ),
     );
   }
 
+  void _copyToClipboard(BuildContext context, String text, String label, bool isDark) {
+    Clipboard.setData(ClipboardData(text: text));
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copiado!'),
+        behavior: SnackBarBehavior.floating,
+        width: 200,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: isDark ? const Color(0xFF334155) : const Color(0xFF1E293B),
+      ),
+    );
+  }
+
+  // MODAL DE DETALHES REESTILIZADO
   void _showDetailsModal(BuildContext context, Map<String, dynamic> item) {
-    final Color corFundo = _hexToColor(item['color'] ?? '#2196F3');
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color corTema = _hexToColor(item['color'] ?? '#6366F1');
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(25),
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(35)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 20),
-            _buildAvatarIcon(item['servico_nome'], corFundo, tamanho: 40),
-            const SizedBox(height: 15),
-            Text(item['servico_nome'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const Divider(height: 40),
-            _buildDetailRow(context, "Usuário", item['servico_usuario'], Icons.person_outline),
-            const SizedBox(height: 20),
-            _buildDetailRow(context, "Senha", item['servico_senha'], Icons.lock_outline),
+            // Barra de arraste
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white12 : Colors.black12,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
             const SizedBox(height: 30),
+            _buildAvatarIcon(item['servico_nome'], corTema, tamanho: 35),
+            const SizedBox(height: 16),
+            Text(
+              item['servico_nome'],
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 25),
+            
+            // Container de Informações (Card Interno)
+            Container(
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
+              ),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  if (item['servico_usuario']?.toString().isNotEmpty ?? false)
+                    _buildDetailItem(context, Icons.person_outline_rounded, "Usuário", item['servico_usuario'], isDark),
+                  if (item['servico_email']?.toString().isNotEmpty ?? false) ...[
+                    Divider(height: 30, color: isDark ? Colors.white10 : const Color(0xFFF1F5F9)),
+                    _buildDetailItem(context, Icons.alternate_email_rounded, "E-mail", item['servico_email'], isDark),
+                  ],
+                  Divider(height: 30, color: isDark ? Colors.white10 : const Color(0xFFF1F5F9)),
+                  _buildDetailItem(context, Icons.lock_outline_rounded, "Senha", item['servico_senha'], isDark, isPassword: true),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 32),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      onDelete(int.parse(item['id'].toString()));
+                    },
+                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                    label: const Text("Excluir", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15)),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      onEdit(registro: item);
+                    },
+                    icon: const Icon(Icons.edit_note_rounded, size: 22),
+                    label: const Text("Editar"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDetailRow(BuildContext context, String label, String valor, IconData icon) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildDetailItem(BuildContext context, IconData icon, String label, String value, bool isDark, {bool isPassword = false}) {
+    return Row(
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
         Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-          child: Row(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 20, color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 22, color: Colors.blueGrey),
-              const SizedBox(width: 12),
-              Expanded(child: Text(valor, style: const TextStyle(fontSize: 16, letterSpacing: 0.5))),
-              IconButton(
-                icon: const Icon(Icons.copy_rounded, size: 20, color: Colors.blue),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: valor));
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label copiado!"), behavior: SnackBarBehavior.floating));
-                },
+              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+              Text(
+                isPassword ? "••••••••••••" : value,
+                style: TextStyle(
+                  fontSize: 15, 
+                  fontWeight: FontWeight.w600, 
+                  color: isDark ? Colors.white : const Color(0xFF1E293B)
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.copy_all_rounded, size: 20, color: Color(0xFF6366F1)),
+          onPressed: () => _copyToClipboard(context, value, label, isDark),
         ),
       ],
     );
@@ -93,48 +215,85 @@ class VaultWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return RefreshIndicator(
+      color: const Color(0xFF6366F1),
       onRefresh: onRefresh,
-      child: isLoading && cofres.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+      child: isLoading
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : cofres.isEmpty
-              ? ListView(children: const [SizedBox(height: 100), Center(child: Text("Nenhum registro encontrado."))])
+              ? _buildEmptyState(isDark)
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 100), // Padding extra no fundo para o FAB
                   itemCount: cofres.length,
                   itemBuilder: (context, index) {
                     final item = cofres[index];
-                    final Color cor = _hexToColor(item['color'] ?? '#2196F3');
-                    return Card(
+                    final Color cor = _hexToColor(item['color'] ?? '#6366F1');
+
+                    return Container(
                       margin: const EdgeInsets.only(bottom: 12),
-                      elevation: 0.5,
-                      shape: RoundedRectangleBorder(
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
                         borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(color: Colors.grey.withOpacity(0.1)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: ListTile(
                         onTap: () => _showDetailsModal(context, item),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        leading: _buildAvatarIcon(item['servico_nome'], cor),
-                        title: Text(item['servico_nome'], style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A1B4B))),
-                        subtitle: Text(item['servico_usuario']),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, color: Colors.blue, size: 20),
-                              onPressed: () => onEdit(registro: item),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                              onPressed: () => onDelete(int.parse(item['id'].toString())),
-                            ),
-                          ],
+                        leading: _buildAvatarIcon(item['servico_nome'], cor, tamanho: 24),
+                        title: Text(
+                          item['servico_nome'],
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
                         ),
+                        subtitle: Text(
+                          (item['servico_email']?.toString().isNotEmpty ?? false)
+                              ? item['servico_email']
+                              : (item['servico_usuario'] ?? 'Sem usuário'),
+                          style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? Colors.white24 : Colors.black12),
                       ),
                     );
                   },
                 ),
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.shield_moon_outlined, size: 80, color: isDark ? Colors.white10 : Colors.grey[200]),
+          const SizedBox(height: 20),
+          Text(
+            "Seu cofre está vazio",
+            style: TextStyle(
+              fontSize: 18, 
+              fontWeight: FontWeight.bold, 
+              color: isDark ? Colors.white38 : Colors.grey[600]
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Toque no botão + para começar",
+            style: TextStyle(color: isDark ? Colors.white24 : Colors.grey[400]),
+          ),
+        ],
+      ),
     );
   }
 }

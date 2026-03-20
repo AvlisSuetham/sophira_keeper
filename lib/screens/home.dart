@@ -8,12 +8,11 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 
-// Importações do projeto (ajuste os caminhos conforme sua estrutura)
 import '../utils/api_service.dart';
 import 'password_generator_screen.dart';
 import 'settings_screen.dart';
 import 'vault.dart';
-import 'tokens.dart'; // Componente tokens atualizado
+import 'tokens.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,14 +23,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final LocalAuthentication auth = LocalAuthentication();
-
   int _indiceAtual = 0;
-
   String nomeUsuario = "";
   String inicialNome = "";
   int usuarioId = 0;
 
-  // Tipagem forte para tokens e cofres
   List<Map<String, dynamic>> tokens = [];
   List<dynamic> cofres = [];
 
@@ -40,9 +36,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _estaAutenticado = false;
 
   final List<Color> listaCores = [
-    Colors.blue, Colors.red, Colors.green, Colors.purple,
-    Colors.orange, Colors.teal, Colors.pink, Colors.indigo,
-    Colors.blueGrey, Colors.amber,
+    const Color(0xFF3B82F6), const Color(0xFFEF4444), const Color(0xFF10B981), 
+    const Color(0xFF8B5CF6), const Color(0xFFF59E0B), const Color(0xFF06B6D4), 
+    const Color(0xFFEC4899), const Color(0xFF6366F1), const Color(0xFF64748B), 
+    const Color(0xFFFBBF24),
   ];
 
   @override
@@ -51,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _verificarBiometria();
   }
 
+  // --- LÓGICA DE BIOMETRIA ---
   Future<void> _verificarBiometria() async {
     if (kIsWeb || (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS))) {
       setState(() => _estaAutenticado = true);
@@ -84,6 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // --- INICIALIZAÇÃO E CACHE ---
   Future<void> _inicializarApp() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -93,10 +92,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     await _loadFromCache();
-    if (usuarioId > 0) {
-      _fetchCofres();
-      _fetchTokens();
-    }
+    _fetchCofres();
+    _fetchTokens();
   }
 
   Future<void> _saveToCache(String key, List<dynamic> data) async {
@@ -106,7 +103,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadFromCache() async {
     final prefs = await SharedPreferences.getInstance();
-
     String? cachedCofre = prefs.getString('cache_vault_$usuarioId');
     String? cachedTokens = prefs.getString('cache_tokens_$usuarioId');
 
@@ -118,18 +114,16 @@ class _HomeScreenState extends State<HomeScreen> {
           if (parsed is List) {
             tokens = parsed.map((e) => Map<String, dynamic>.from(e as Map)).toList();
           }
-        } catch (_) {
-          tokens = [];
-        }
+        } catch (_) { tokens = []; }
       }
       isLoading = false;
     });
   }
 
+  // --- BUSCA DE DADOS ---
   Future<void> _fetchCofres() async {
-    if (usuarioId <= 0) return;
     try {
-      final data = await ApiService.listarCofres(usuarioId);
+      final data = await ApiService.listarCofres();
       if (data['success'] == true) {
         setState(() {
           cofres = data['data'];
@@ -139,19 +133,14 @@ class _HomeScreenState extends State<HomeScreen> {
         _saveToCache('cache_vault', data['data'] as List<dynamic>);
       }
     } catch (e) {
-      setState(() {
-        isOffline = true;
-        isLoading = false;
-      });
+      setState(() { isOffline = true; isLoading = false; });
       _loadFromCache();
     }
   }
 
-  // Busca tokens (com cast seguro)
   Future<void> _fetchTokens() async {
-    if (usuarioId <= 0) return;
     try {
-      final data = await ApiService.listarTokens(usuarioId);
+      final data = await ApiService.listarTokens();
       if (data['success'] == true) {
         final raw = data['data'];
         if (raw is List) {
@@ -163,65 +152,49 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     } catch (e) {
-      setState(() {
-        isOffline = true;
-      });
+      setState(() { isOffline = true; });
     }
   }
 
+  // --- EXCLUSÃO ---
   Future<void> _excluirCofre(int id) async {
-    if (isOffline) {
-      _showErrorSnackBar("Não é possível excluir enquanto estiver offline.");
-      return;
-    }
+    if (isOffline) { _showErrorSnackBar("Offline: Ação bloqueada."); return; }
     bool confirmar = await _mostrarConfirmacaoExclusao();
     if (!confirmar) return;
-
     try {
-      final data = await ApiService.excluirCofre(id, usuarioId);
+      final data = await ApiService.excluirCofre(id);
       if (data['success'] == true) _fetchCofres();
-    } catch (e) {
-      _showErrorSnackBar("Erro ao excluir. Verifique sua conexão.");
-    }
+    } catch (e) { _showErrorSnackBar("Erro ao excluir."); }
   }
 
   Future<void> _excluirToken(int id) async {
-    if (isOffline) {
-      _showErrorSnackBar("Não é possível excluir enquanto estiver offline.");
-      return;
-    }
+    if (isOffline) { _showErrorSnackBar("Offline: Ação bloqueada."); return; }
     bool confirmar = await _mostrarConfirmacaoExclusao();
     if (!confirmar) return;
-
     try {
-      final data = await ApiService.excluirToken(id, usuarioId);
+      final data = await ApiService.excluirToken(id);
       if (data['success'] == true) _fetchTokens();
-    } catch (e) {
-      _showErrorSnackBar("Erro ao excluir. Verifique sua conexão.");
-    }
+    } catch (e) { _showErrorSnackBar("Erro ao excluir."); }
   }
 
   Future<bool> _mostrarConfirmacaoExclusao() async {
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Excluir registro?"),
-        content: const Text("Esta ação removerá o dado do servidor."),
+        title: const Text("Excluir?"),
+        content: const Text("Esta ação é permanente no servidor."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancelar")),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Manter")),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Excluir", style: TextStyle(color: Colors.red))),
         ],
       ),
     ) ?? false;
   }
 
+  // --- SCANNER QR CODE ---
   Future<void> _escanearESalvarToken() async {
-    if (isOffline) {
-      _showErrorSnackBar("Conecte-se à internet para salvar um novo token.");
-      return;
-    }
+    if (isOffline) { _showErrorSnackBar("Conecte-se para salvar tokens."); return; }
 
-    // Abre a tela de scanner e espera resultado
     final code = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const QRScannerScreen()),
@@ -231,259 +204,275 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final uri = Uri.parse(code as String);
-
-      if (uri.scheme == 'otpauth' && uri.host == 'totp') {
+      if (uri.scheme == 'otpauth') {
         final secret = uri.queryParameters['secret'];
-        if (secret == null || secret.isEmpty) {
-          _showErrorSnackBar("QR Code inválido: Chave secreta não encontrada.");
-          return;
-        }
+        if (secret == null) return;
 
-        String servicoNome = uri.queryParameters['issuer'] ?? 'Serviço Desconhecido';
-        if (servicoNome == 'Serviço Desconhecido' && uri.pathSegments.isNotEmpty) {
-          servicoNome = Uri.decodeComponent(uri.pathSegments.last);
-        }
-
+        String servicoNome = uri.queryParameters['issuer'] ?? uri.pathSegments.last;
         final randomColorHex = '#${listaCores[tokens.length % listaCores.length].value.toRadixString(16).substring(2)}';
 
         final payload = {
-          'usuario_id': usuarioId,
-          'servico_nome': servicoNome,
+          'servico_nome': Uri.decodeComponent(servicoNome),
           'servico_otp_secret': secret.toUpperCase(),
           'color': randomColorHex,
         };
 
         final response = await ApiService.adicionarToken(payload);
         if (response['success'] == true) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Token adicionado com sucesso!"), backgroundColor: Colors.green),
-            );
-          }
           setState(() => _indiceAtual = 1);
           _fetchTokens();
-        } else {
-          _showErrorSnackBar("Falha ao salvar token no servidor.");
         }
-      } else {
-        _showErrorSnackBar("Formato de QR Code não suportado.");
       }
-    } catch (e) {
-      _showErrorSnackBar("Erro ao processar QR Code.");
-    }
+    } catch (e) { _showErrorSnackBar("Erro ao processar QR Code."); }
   }
 
+  // --- INTERFACE PRINCIPAL ---
   @override
   Widget build(BuildContext context) {
+    bool isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
+
     if (!_estaAutenticado) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       body: Stack(
         children: [
           Column(
             children: [
-              _buildHeader(),
+              _buildHeader(isDark),
               Expanded(
-                child: _indiceAtual == 0
-                    ? VaultWidget(
-                        cofres: cofres,
-                        isLoading: isLoading,
-                        onRefresh: _fetchCofres,
-                        onEdit: _showFormDialog,
-                        onDelete: _excluirCofre,
-                      )
-                    : TokensWidget(
-                        tokens: tokens,
-                        isLoading: isLoading,
-                        onRefresh: _fetchTokens,
-                        onDelete: _excluirToken, // agora tipado compatível
-                      ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _indiceAtual == 0
+                      ? VaultWidget(
+                          cofres: cofres,
+                          isLoading: isLoading,
+                          onRefresh: _fetchCofres,
+                          onEdit: _showFormDialog,
+                          onDelete: _excluirCofre,
+                        )
+                      : TokensWidget(
+                          tokens: tokens,
+                          isLoading: isLoading,
+                          onRefresh: _fetchTokens,
+                          onDelete: _excluirToken,
+                        ),
+                ),
               ),
             ],
           ),
-          if (isOffline)
-            Positioned(
-              bottom: 20,
-              left: 20,
-              right: 20,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1B4B).withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)],
-                ),
-                child: Row(
-                  children: const [
-                    Icon(Icons.cloud_off_rounded, color: Colors.amber, size: 20),
-                    SizedBox(width: 12),
-                    Text("Modo Offline: Apenas leitura", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
-                  ],
-                ),
-              ),
-            ),
+          if (isOffline) _buildOfflineBanner(),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _indiceAtual,
-        onTap: (index) => setState(() => _indiceAtual = index),
-        selectedItemColor: const Color(0xFF1A1B4B),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.lock_rounded), label: 'Senhas'),
-          BottomNavigationBarItem(icon: Icon(Icons.security_rounded), label: 'Tokens 2FA'),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _indiceAtual,
+          onTap: (index) => setState(() => _indiceAtual = index),
+          selectedItemColor: const Color(0xFF6366F1),
+          unselectedItemColor: Colors.grey,
+          showSelectedLabels: true,
+          showUnselectedLabels: false,
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.lock_outline_rounded), activeIcon: Icon(Icons.lock_rounded), label: 'Senhas'),
+            BottomNavigationBarItem(icon: Icon(Icons.shield_outlined), activeIcon: Icon(Icons.shield_rounded), label: '2FA'),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _indiceAtual == 0 ? _showFormDialog() : _escanearESalvarToken(),
-        backgroundColor: const Color(0xFFE91E63),
+        backgroundColor: _indiceAtual == 0 ? const Color(0xFF6366F1) : const Color(0xFFEC4899),
         elevation: 4,
-        label: Text(_indiceAtual == 0 ? "NOVO ACESSO" : "LER QR CODE", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        icon: Icon(_indiceAtual == 0 ? Icons.add : Icons.qr_code_scanner, color: Colors.white),
+        label: Text(_indiceAtual == 0 ? "NOVA SENHA" : "ESCANEAR"),
+        icon: Icon(_indiceAtual == 0 ? Icons.add_rounded : Icons.qr_code_scanner_rounded),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(bool isDark) {
     return Container(
-      padding: const EdgeInsets.only(top: 50, left: 25, right: 10, bottom: 30),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFF1A1B4B), Color(0xFF2D32A4)]),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))],
+      padding: const EdgeInsets.fromLTRB(25, 60, 15, 30),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark 
+            ? [const Color(0xFF1E293B), const Color(0xFF0F172A)] 
+            : [const Color(0xFF1A1B4B), const Color(0xFF3730A3)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(40)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              CircleAvatar(backgroundColor: Colors.white24, child: Text(inicialNome, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              CircleAvatar(
+                backgroundColor: Colors.white24,
+                child: Text(inicialNome, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
               const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white70),
-                onPressed: _escanearESalvarToken,
-                tooltip: "Escanear QR Code 2FA",
-              ),
-              IconButton(
-                icon: const Icon(Icons.enhanced_encryption_rounded, color: Colors.white70),
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PasswordGeneratorScreen())),
-                tooltip: "Gerador de Senhas",
-              ),
-              IconButton(
-                icon: const Icon(Icons.settings_suggest_rounded, color: Colors.white70),
-                tooltip: "Configurações",
-                onPressed: () async {
-                  await Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
-                  _fetchCofres();
-                  _fetchTokens();
-                },
-              ),
-              IconButton(icon: const Icon(Icons.logout_rounded, color: Colors.redAccent), onPressed: _logout, tooltip: "Sair"),
+              _headerIcon(Icons.password_rounded, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PasswordGeneratorScreen()))),
+              _headerIcon(Icons.settings_outlined, () async {
+                await Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                _fetchCofres(); _fetchTokens();
+              }),
+              _headerIcon(Icons.logout_rounded, _logout, color: Colors.redAccent.withOpacity(0.8)),
             ],
           ),
           const SizedBox(height: 25),
-          const Text('Bem-vindo ao seu cofre,', style: TextStyle(color: Colors.white70, fontSize: 16)),
-          Text(nomeUsuario, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          Text('Olá,', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 16)),
+          Text(nomeUsuario, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
         ],
       ),
     );
   }
 
-  void _showFormDialog({Map<String, dynamic>? registro}) {
-    if (isOffline) {
-      _showErrorSnackBar("Conecte-se à internet para salvar.");
-      return;
-    }
+  Widget _headerIcon(IconData icon, VoidCallback onTap, {Color color = Colors.white70}) {
+    return IconButton(icon: Icon(icon, color: color, size: 22), onPressed: onTap);
+  }
 
-    final isEditing = registro != null;
-    final nomeController = TextEditingController(text: isEditing ? registro['servico_nome']?.toString() : '');
-    final userController = TextEditingController(text: isEditing ? registro['servico_usuario']?.toString() : '');
-    final senhaController = TextEditingController(text: isEditing ? registro['servico_senha']?.toString() : '');
-
-    Color _hexToColor(String hexCode) {
-      try {
-        return Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
-      } catch (e) {
-        return Colors.blue;
-      }
-    }
-
-    String _colorToHex(Color color) => '#${color.value.toRadixString(16).substring(2)}';
-
-    Color corSelecionada = isEditing && registro!['color'] != null ? _hexToColor(registro['color']) : Colors.blue;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text(isEditing ? "Editar Registro" : "Novo Registro"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(controller: nomeController, decoration: const InputDecoration(labelText: "Serviço", prefixIcon: Icon(Icons.apps))),
-                TextField(controller: userController, decoration: const InputDecoration(labelText: "Usuário", prefixIcon: Icon(Icons.person))),
-                TextField(controller: senhaController, decoration: const InputDecoration(labelText: "Senha", prefixIcon: Icon(Icons.vpn_key))),
-                const SizedBox(height: 20),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: listaCores.map((cor) => GestureDetector(
-                    onTap: () => setModalState(() => corSelecionada = cor),
-                    child: CircleAvatar(
-                      radius: 15,
-                      backgroundColor: cor,
-                      child: corSelecionada == cor ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
-                    ),
-                  )).toList(),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-            ElevatedButton(
-              onPressed: () async {
-                final payload = {
-                  'usuario_id': usuarioId,
-                  'servico_nome': nomeController.text,
-                  'servico_usuario': userController.text,
-                  'servico_senha': senhaController.text,
-                  'color': _colorToHex(corSelecionada),
-                };
-
-                try {
-                  Map<String, dynamic> responseData;
-                  if (isEditing) {
-                    payload['id'] = registro['id'];
-                    responseData = await ApiService.editarCofre(payload);
-                  } else {
-                    responseData = await ApiService.adicionarCofre(payload);
-                  }
-
-                  if (responseData['success'] == true) {
-                    if (context.mounted) Navigator.pop(context);
-                    _fetchCofres();
-                  } else {
-                    _showErrorSnackBar("Falha ao salvar. Verifique os dados.");
-                  }
-                } catch (e) {
-                  _showErrorSnackBar("Erro ao salvar. Verifique sua conexão.");
-                }
-              },
-              child: const Text("Salvar"),
-            ),
+  Widget _buildOfflineBanner() {
+    return Positioned(
+      bottom: 20, left: 20, right: 20,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF59E0B),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8)],
+        ),
+        child: Row(
+          children: const [
+            Icon(Icons.cloud_off_rounded, color: Colors.white),
+            SizedBox(width: 12),
+            Text("Modo Offline Ativo", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
     );
   }
 
-  void _showErrorSnackBar(String mensagem) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent));
+  // --- NOVO DIALOGO DE FORMULÁRIO (ESTÉTICA ARRUMADA) ---
+  void _showFormDialog({Map<String, dynamic>? registro}) {
+    if (isOffline) { _showErrorSnackBar("Conecte-se para salvar."); return; }
+
+    final isEditing = registro != null;
+    final nomeController = TextEditingController(text: isEditing ? registro['servico_nome'] : '');
+    final emailController = TextEditingController(text: isEditing ? registro['servico_email'] : '');
+    final userController = TextEditingController(text: isEditing ? registro['servico_usuario'] : '');
+    final senhaController = TextEditingController(text: isEditing ? registro['servico_senha'] : '');
+
+    Color hexToColor(String hex) => Color(int.parse(hex.replaceFirst('#', '0xFF')));
+    String colorToHex(Color c) => '#${c.value.toRadixString(16).substring(2)}';
+    
+    Color corSelecionada = isEditing && registro['color'] != null 
+        ? hexToColor(registro['color']) : listaCores[0];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          bool isDark = Theme.of(context).brightness == Brightness.dark;
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            title: Text(isEditing ? "Editar Acesso" : "Novo Acesso", 
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildInput(nomeController, "Serviço (ex: Netflix)", Icons.apps_rounded, isDark),
+                  _buildInput(emailController, "E-mail", Icons.alternate_email_rounded, isDark),
+                  _buildInput(userController, "Usuário", Icons.person_outline_rounded, isDark),
+                  _buildInput(senhaController, "Senha", Icons.lock_outline_rounded, isDark, obscure: true),
+                  const SizedBox(height: 15),
+                  const Align(alignment: Alignment.centerLeft, child: Text("Cor de identificação", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey))),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10, runSpacing: 10,
+                    children: listaCores.map((cor) => GestureDetector(
+                      onTap: () => setModalState(() => corSelecionada = cor),
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: corSelecionada == cor ? cor : Colors.transparent, width: 2),
+                        ),
+                        child: CircleAvatar(radius: 12, backgroundColor: cor, child: corSelecionada == cor ? const Icon(Icons.check, size: 14, color: Colors.white) : null),
+                      ),
+                    )).toList(),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () async {
+                  if (nomeController.text.isEmpty) return;
+                  try {
+                    final colorHex = colorToHex(corSelecionada);
+                    Map<String, dynamic> resp;
+                    if (isEditing) {
+                      resp = await ApiService.editarCofre(
+                        id: int.parse(registro['id'].toString()),
+                        nome: nomeController.text, email: emailController.text,
+                        usuario: userController.text, senha: senhaController.text, color: colorHex,
+                      );
+                    } else {
+                      resp = await ApiService.adicionarCofre(
+                        nome: nomeController.text, email: emailController.text,
+                        usuario: userController.text, senha: senhaController.text, color: colorHex,
+                      );
+                    }
+                    if (resp['success'] == true) {
+                      Navigator.pop(context);
+                      _fetchCofres();
+                    }
+                  } catch (e) { _showErrorSnackBar("Erro ao salvar."); }
+                },
+                child: const Text("Confirmar"),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  Widget _buildInput(TextEditingController ctrl, String label, IconData icon, bool isDark, {bool obscure = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: ctrl,
+        obscureText: obscure,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, size: 20),
+          filled: true,
+          fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+          contentPadding: const EdgeInsets.symmetric(vertical: 15),
+        ),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.redAccent));
 
   _logout() async {
     final prefs = await SharedPreferences.getInstance();

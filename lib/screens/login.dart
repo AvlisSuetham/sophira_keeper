@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; 
+import 'package:flutter/services.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/api_service.dart';
@@ -14,7 +14,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController cpfController = TextEditingController();
   final TextEditingController senhaController = TextEditingController();
-  
+
   final maskCpf = MaskTextInputFormatter(
     mask: "###.###.###-##",
     filter: {"#": RegExp(r'[0-9]')},
@@ -25,30 +25,34 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> login() async {
     final cpfLimpo = maskCpf.getUnmaskedText();
-    
-    if (cpfLimpo.isEmpty || senhaController.text.isEmpty) {
-      _showMsg('Preencha todos os campos', Colors.orange);
+    final senha = senhaController.text;
+
+    if (cpfLimpo.length != 11 || senha.isEmpty) {
+      _showMsg('CPF ou Chave Mestra inválidos', Colors.orange);
       return;
     }
 
     setState(() => loading = true);
+
     try {
-      final data = await ApiService.login(cpfLimpo, senhaController.text);
+      final data = await ApiService.login(cpfLimpo, senha);
+
+      if (!mounted) return;
       setState(() => loading = false);
 
       if (data['success'] == true) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('usuario_id', int.parse(data['user']['id'].toString()));
+        await prefs.setInt('usuario_id', data['user']['id']);
         await prefs.setString('usuario_nome', data['user']['nome']);
-
-        if (!mounted) return;
+        await prefs.setString('usuario_email', data['user']['email']);
 
         _showMsg('Bem-vindo, ${data['user']['nome']}', Colors.green);
         Navigator.pushReplacementNamed(context, '/home');
       } else {
-        _showMsg(data['error'] ?? 'Credenciais inválidas', Colors.redAccent);
+        _showMsg(data['error'] ?? 'Erro ao acessar conta', Colors.redAccent);
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => loading = false);
       _showMsg('Erro de conexão com o servidor', Colors.red);
     }
@@ -57,25 +61,30 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showMsg(String m, Color c) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(m), 
-        backgroundColor: c, 
+        content: Text(m),
+        backgroundColor: c,
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1B4B), Color(0xFF2196F3), Color(0xFFE91E63)],
+            // Cores escuras para o modo dark e cyberpunk para o light
+            colors: isDark
+                ? [const Color(0xFF020617), const Color(0xFF0F172A), const Color(0xFF1E1B4B)]
+                : [const Color(0xFF1A1B4B), const Color(0xFF2196F3), const Color(0xFFE91E63)],
           ),
         ),
         child: Center(
@@ -84,15 +93,14 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // --- SUBSTITUIÇÃO DO ÍCONE PELA LOGO ---
+                // ÍCONE ORIGINAL RESTAURADO
                 Hero(
                   tag: 'logo',
                   child: Image.asset(
                     'assets/logo.png',
-                    height: 100, // Ajuste o tamanho conforme necessário
+                    height: 100,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
-                      // Caso a logo falhe ao carregar, exibe o escudo antigo como fallback
                       return const Icon(Icons.shield_rounded, size: 80, color: Colors.white24);
                     },
                   ),
@@ -114,23 +122,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 48),
 
                 _buildField(
-                  controller: cpfController, 
-                  label: 'CPF', 
-                  icon: Icons.person_outline, 
+                  controller: cpfController,
+                  label: 'CPF',
+                  icon: Icons.person_outline,
                   formatters: [maskCpf],
-                  keyboardType: TextInputType.number
+                  keyboardType: TextInputType.number,
                 ),
                 const SizedBox(height: 16),
 
                 _buildField(
-                  controller: senhaController, 
-                  label: 'Chave Mestra', 
-                  icon: Icons.lock_outline, 
+                  controller: senhaController,
+                  label: 'Chave Mestra',
+                  icon: Icons.lock_outline,
                   obscure: obscureSenha,
                   suffix: IconButton(
                     icon: Icon(
-                      obscureSenha ? Icons.visibility : Icons.visibility_off, 
-                      color: Colors.white70
+                      obscureSenha ? Icons.visibility : Icons.visibility_off,
+                      color: Colors.white70,
                     ),
                     onPressed: () => setState(() => obscureSenha = !obscureSenha),
                   ),
@@ -155,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: loading ? null : login,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE91E63),
+                      backgroundColor: isDark ? const Color(0xFF6366F1) : const Color(0xFFE91E63),
                       foregroundColor: Colors.white,
                       elevation: 5,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -176,7 +184,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 
                 const SizedBox(height: 24),
                 
-                // LINK PARA O REGISTRO
                 TextButton(
                   onPressed: () => Navigator.pushNamed(context, '/register'),
                   child: const Text(
@@ -193,13 +200,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildField({
-    required TextEditingController controller, 
-    required String label, 
-    required IconData icon, 
-    bool obscure = false, 
-    List<TextInputFormatter>? formatters, 
-    TextInputType keyboardType = TextInputType.text, 
-    Widget? suffix
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool obscure = false,
+    List<TextInputFormatter>? formatters,
+    TextInputType keyboardType = TextInputType.text,
+    Widget? suffix,
   }) {
     return TextField(
       controller: controller,
@@ -208,19 +215,19 @@ class _LoginScreenState extends State<LoginScreen> {
       keyboardType: keyboardType,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
-        labelText: label, 
+        labelText: label,
         labelStyle: const TextStyle(color: Colors.white70),
         prefixIcon: Icon(icon, color: Colors.white70),
         suffixIcon: suffix,
-        filled: true, 
-        fillColor: Colors.white.withOpacity(0.1),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.08),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15), 
-          borderSide: const BorderSide(color: Colors.white30)
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Colors.white24),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15), 
-          borderSide: const BorderSide(color: Colors.white)
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Colors.white),
         ),
       ),
     );
