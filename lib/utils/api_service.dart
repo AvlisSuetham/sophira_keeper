@@ -3,8 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // ⚠️ DICA: Se usar emulador Android, troque 'localhost' por '10.0.2.2'
-  static const String baseUrl = "http://localhost:8000/api";
+  static const String baseUrl = "http://keeper.sophira.com.br/api";
 
   /* ================= HEADERS ================= */
   static Future<Map<String, String>> _getHeaders() async {
