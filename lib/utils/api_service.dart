@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = "http://keeper.sophira.com.br/api";
+  // 1. MUDANÇA PARA HTTPS
+  static const String baseUrl = "https://keeper.sophira.com.br/api";
 
   /* ================= HEADERS ================= */
   static Future<Map<String, String>> _getHeaders() async {
@@ -13,8 +15,17 @@ class ApiService {
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      // User-Agent ajuda a evitar bloqueios de Firewalls de servidores (como ModSecurity)
+      'User-Agent': 'SophiraKeeper/1.0', 
       if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
     };
+  }
+
+  /* ================= TRATAMENTO DE ERRO GENÉRICO ================= */
+  // Função auxiliar para logar erros reais no console durante o debug
+  static Map<String, dynamic> _handleError(dynamic e, String mensagemPadrao) {
+    print("Erro detalhado na API: $e");
+    return {'success': false, 'error': '$mensagemPadrao: ${e.toString()}'};
   }
 
   /* ================= AUTENTICAÇÃO (USER) ================= */
@@ -24,18 +35,18 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/cadastro'),
-        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        headers: await _getHeaders(),
         body: jsonEncode({
           'name': nome,
           'email': email,
           'cpf': cpf,
           'password': senha,
         }),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Falha de conexão com o servidor'};
+      return _handleError(e, 'Falha de conexão ao cadastrar');
     }
   }
 
@@ -43,9 +54,9 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/login'),
-        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        headers: await _getHeaders(),
         body: jsonEncode({'cpf': cpf, 'password': senha}),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
 
@@ -55,7 +66,7 @@ class ApiService {
       }
       return data;
     } catch (e) {
-      return {'success': false, 'error': 'Erro ao tentar autenticar'};
+      return _handleError(e, 'Erro ao tentar autenticar');
     }
   }
 
@@ -71,11 +82,11 @@ class ApiService {
       final response = await http.get(
         Uri.parse('$baseUrl/cofre'),
         headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Erro ao buscar registros do cofre'};
+      return _handleError(e, 'Erro ao buscar registros do cofre');
     }
   }
 
@@ -97,17 +108,11 @@ class ApiService {
           'servico_senha': senha,
           'color': color,
         }),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
-      // Laravel retorna 201 Created para novos registros
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(response.body);
-      }
-      
-      final erroBody = jsonDecode(response.body);
-      return {'success': false, 'error': erroBody['error'] ?? 'Erro ao salvar'};
+      return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Falha de conexão'};
+      return _handleError(e, 'Falha de conexão ao salvar');
     }
   }
 
@@ -130,11 +135,11 @@ class ApiService {
           'servico_senha': senha,
           'color': color,
         }),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Falha de conexão'};
+      return _handleError(e, 'Falha de conexão ao editar');
     }
   }
 
@@ -143,11 +148,11 @@ class ApiService {
       final response = await http.delete(
         Uri.parse('$baseUrl/cofre/$id'),
         headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Erro ao processar exclusão'};
+      return _handleError(e, 'Erro ao processar exclusão');
     }
   }
 
@@ -161,7 +166,7 @@ class ApiService {
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Falha na importação de lote'};
+      return _handleError(e, 'Falha na importação');
     }
   }
 
@@ -172,11 +177,11 @@ class ApiService {
       final response = await http.get(
         Uri.parse('$baseUrl/tokens'),
         headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Erro ao listar tokens'};
+      return _handleError(e, 'Erro ao listar tokens');
     }
   }
 
@@ -186,11 +191,11 @@ class ApiService {
         Uri.parse('$baseUrl/tokens'),
         headers: await _getHeaders(),
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Erro ao salvar token'};
+      return _handleError(e, 'Erro ao salvar token');
     }
   }
 
@@ -199,11 +204,11 @@ class ApiService {
       final response = await http.delete(
         Uri.parse('$baseUrl/tokens/$id'),
         headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': 'Erro ao remover token'};
+      return _handleError(e, 'Erro ao remover token');
     }
   }
 }
