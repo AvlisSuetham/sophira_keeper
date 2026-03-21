@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Importante para controlar a Status Bar
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Importações das telas
@@ -11,10 +12,16 @@ import 'screens/settings_screen.dart';
 import 'screens/backup_screen.dart';
 
 void main() async {
+  // Garante a inicialização dos bindings antes de qualquer await
   WidgetsFlutterBinding.ensureInitialized();
   
+  // 1. Configuração global da Status Bar para ser transparente desde o início
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark, // Padrão claro, o Flutter alterna depois
+  ));
+
   final prefs = await SharedPreferences.getInstance();
-  // Verifica se o ID do usuário existe e é válido (> 0)
   final int usuarioId = prefs.getInt('usuario_id') ?? 0;
   final bool logado = usuarioId > 0;
 
@@ -31,12 +38,9 @@ class SophiraKeeper extends StatelessWidget {
       title: 'Sophira Keeper',
       debugShowCheckedModeBanner: false,
       
-      // --- CONFIGURAÇÃO DE TEMA ---
-      
-      // 1. Detecta automaticamente o tema do Windows, Linux ou Android
       themeMode: ThemeMode.system, 
 
-      // 2. Tema Claro (Padrão)
+      // --- TEMA CLARO ---
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
@@ -46,6 +50,14 @@ class SophiraKeeper extends StatelessWidget {
           secondary: const Color(0xFFE91E63), 
           surface: const Color(0xFFF8FAFC),
         ),
+        // Garante que o Scaffold do Light Mode seja branco puro para bater com o XML
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          systemOverlayStyle: SystemUiOverlayStyle.dark, // Ícones escuros na barra
+        ),
         inputDecorationTheme: InputDecorationTheme(
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           filled: true,
@@ -53,31 +65,36 @@ class SophiraKeeper extends StatelessWidget {
         ),
       ),
 
-      // 3. Tema Escuro (Dark Mode)
+      // --- TEMA ESCURO ---
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6366F1), // Um azul mais vibrante para contraste no escuro
+          seedColor: const Color(0xFF6366F1),
           brightness: Brightness.dark,
           primary: const Color(0xFF6366F1),
           secondary: const Color(0xFFEC4899),
-          surface: const Color(0xFF0F172A), // Fundo azul marinho muito escuro
+          surface: const Color(0xFF0F172A), 
           onSurface: Colors.white,
         ),
         scaffoldBackgroundColor: const Color(0xFF0F172A),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0F172A),
+          elevation: 0,
+          centerTitle: true,
+          systemOverlayStyle: SystemUiOverlayStyle.light,
+        ),
         inputDecorationTheme: InputDecorationTheme(
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
           ),
           filled: true,
-          fillColor: const Color(0xFF1E293B), // Cor dos inputs no dark mode
+          fillColor: const Color(0xFF1E293B),
           labelStyle: const TextStyle(color: Colors.grey),
         ),
       ),
 
-      // --- ROTAS ---
       initialRoute: inicialLogado ? '/home' : '/',
       routes: {
         '/': (context) => const LoginScreen(),
