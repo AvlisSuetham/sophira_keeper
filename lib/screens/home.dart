@@ -178,11 +178,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool> _mostrarConfirmacaoExclusao() async {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Excluir?"),
-        content: const Text("Esta ação é permanente no servidor."),
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        title: Text("Excluir?", style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+        content: Text("Esta ação é permanente no servidor.", style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Manter")),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Excluir", style: TextStyle(color: Colors.red))),
@@ -229,10 +231,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- INTERFACE PRINCIPAL ---
   @override
   Widget build(BuildContext context) {
-    bool isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (!_estaAutenticado) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+        body: const Center(child: CircularProgressIndicator())
+      );
     }
 
     return Scaffold(
@@ -268,13 +273,18 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
+          boxShadow: [
+            BoxShadow(
+              color: isDark ? Colors.black.withOpacity(0.5) : Colors.black.withOpacity(0.1), 
+              blurRadius: 10
+            )
+          ],
         ),
         child: BottomNavigationBar(
           currentIndex: _indiceAtual,
           onTap: (index) => setState(() => _indiceAtual = index),
           selectedItemColor: const Color(0xFF6366F1),
-          unselectedItemColor: Colors.grey,
+          unselectedItemColor: isDark ? Colors.grey[600] : Colors.grey,
           showSelectedLabels: true,
           showUnselectedLabels: false,
           type: BottomNavigationBarType.fixed,
@@ -289,8 +299,8 @@ class _HomeScreenState extends State<HomeScreen> {
         onPressed: () => _indiceAtual == 0 ? _showFormDialog() : _escanearESalvarToken(),
         backgroundColor: _indiceAtual == 0 ? const Color(0xFF6366F1) : const Color(0xFFEC4899),
         elevation: 4,
-        label: Text(_indiceAtual == 0 ? "NOVA SENHA" : "ESCANEAR"),
-        icon: Icon(_indiceAtual == 0 ? Icons.add_rounded : Icons.qr_code_scanner_rounded),
+        label: Text(_indiceAtual == 0 ? "NOVA SENHA" : "ESCANEAR", style: const TextStyle(color: Colors.white)),
+        icon: Icon(_indiceAtual == 0 ? Icons.add_rounded : Icons.qr_code_scanner_rounded, color: Colors.white),
       ),
     );
   }
@@ -346,10 +356,10 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFFF59E0B),
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8)],
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8)],
         ),
-        child: Row(
-          children: const [
+        child: const Row(
+          children: [
             Icon(Icons.cloud_off_rounded, color: Colors.white),
             SizedBox(width: 12),
             Text("Modo Offline Ativo", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -385,12 +395,12 @@ class _HomeScreenState extends State<HomeScreen> {
             backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
             title: Text(isEditing ? "Editar Acesso" : "Novo Acesso", 
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+              style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildInput(nomeController, "Serviço (ex: Netflix)", Icons.apps_rounded, isDark),
+                  _buildInput(nomeController, "Serviço", Icons.apps_rounded, isDark),
                   _buildInput(emailController, "E-mail", Icons.alternate_email_rounded, isDark),
                   _buildInput(userController, "Usuário", Icons.person_outline_rounded, isDark),
                   _buildInput(senhaController, "Senha", Icons.lock_outline_rounded, isDark, obscure: true),
@@ -415,7 +425,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: Text("Cancelar", style: TextStyle(color: isDark ? Colors.white70 : Colors.black54))
+              ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6366F1),
@@ -460,9 +473,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: TextField(
         controller: ctrl,
         obscureText: obscure,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon, size: 20),
+          labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700]),
+          prefixIcon: Icon(icon, size: 20, color: isDark ? Colors.grey[400] : Colors.grey[700]),
           filled: true,
           fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),

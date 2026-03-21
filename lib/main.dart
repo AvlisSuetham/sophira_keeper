@@ -30,12 +30,21 @@ class SophiraKeeper extends StatelessWidget {
     return MaterialApp(
       title: 'Sophira Keeper',
       debugShowCheckedModeBanner: false,
+      
+      // --- CONFIGURAÇÃO DE TEMA ---
+      
+      // 1. Detecta automaticamente o tema do Windows, Linux ou Android
+      themeMode: ThemeMode.system, 
+
+      // 2. Tema Claro (Padrão)
       theme: ThemeData(
         useMaterial3: true,
+        brightness: Brightness.light,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF1A1B4B),
           primary: const Color(0xFF1A1B4B), 
           secondary: const Color(0xFFE91E63), 
+          surface: const Color(0xFFF8FAFC),
         ),
         inputDecorationTheme: InputDecorationTheme(
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -43,7 +52,32 @@ class SophiraKeeper extends StatelessWidget {
           fillColor: Colors.white,
         ),
       ),
-      // Se estiver logado, vai direto para a Home, senão, tela de Login
+
+      // 3. Tema Escuro (Dark Mode)
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6366F1), // Um azul mais vibrante para contraste no escuro
+          brightness: Brightness.dark,
+          primary: const Color(0xFF6366F1),
+          secondary: const Color(0xFFEC4899),
+          surface: const Color(0xFF0F172A), // Fundo azul marinho muito escuro
+          onSurface: Colors.white,
+        ),
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: const Color(0xFF1E293B), // Cor dos inputs no dark mode
+          labelStyle: const TextStyle(color: Colors.grey),
+        ),
+      ),
+
+      // --- ROTAS ---
       initialRoute: inicialLogado ? '/home' : '/',
       routes: {
         '/': (context) => const LoginScreen(),

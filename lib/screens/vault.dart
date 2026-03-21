@@ -1,3 +1,4 @@
+// lib/screens/vault.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -64,7 +65,7 @@ class VaultWidget extends StatelessWidget {
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$label copiado!'),
+        content: Text('$label copiado!', style: const TextStyle(color: Colors.white)),
         behavior: SnackBarBehavior.floating,
         width: 200,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -260,7 +261,7 @@ class VaultWidget extends StatelessWidget {
                           (item['servico_email']?.toString().isNotEmpty ?? false)
                               ? item['servico_email']
                               : (item['servico_usuario'] ?? 'Sem usuário'),
-                          style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                          style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[500], fontSize: 13),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

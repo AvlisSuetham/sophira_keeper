@@ -66,13 +66,13 @@ class _TokensWidgetState extends State<TokensWidget> {
   }
 
   Color _hexToColor(String? hexCode) {
-    if (hexCode == null || hexCode.isEmpty) return _deepBlue;
+    if (hexCode == null || hexCode.isEmpty) return const Color(0xFF6366F1);
     try {
       final cleaned = hexCode.replaceFirst('#', '');
       final value = cleaned.length == 6 ? 'FF$cleaned' : cleaned;
       return Color(int.parse('0x$value'));
     } catch (_) {
-      return _deepBlue;
+      return const Color(0xFF6366F1);
     }
   }
 
@@ -94,7 +94,7 @@ class _TokensWidgetState extends State<TokensWidget> {
     }
   }
 
-  void _copiarParaAreaTransferencia(BuildContext context, String texto) {
+  void _copiarParaAreaTransferencia(BuildContext context, String texto, bool isDark) {
     Clipboard.setData(ClipboardData(text: texto));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -102,10 +102,10 @@ class _TokensWidgetState extends State<TokensWidget> {
           children: [
             Icon(Icons.check_circle, color: Colors.white),
             SizedBox(width: 12),
-            Text("Código 2FA copiado!"),
+            Text("Código 2FA copiado!", style: TextStyle(color: Colors.white)),
           ],
         ),
-        backgroundColor: _deepBlue,
+        backgroundColor: isDark ? const Color(0xFF334155) : _deepBlue,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         duration: const Duration(seconds: 2),
@@ -121,6 +121,8 @@ class _TokensWidgetState extends State<TokensWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (widget.isLoading) {
       return Center(
         child: CircularProgressIndicator(color: _neonPink),
@@ -141,20 +143,20 @@ class _TokensWidgetState extends State<TokensWidget> {
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: _deepBlue.withOpacity(0.05),
+                      color: isDark ? Colors.white.withOpacity(0.05) : _deepBlue.withOpacity(0.05),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       Icons.security_rounded,
                       size: 80,
-                      color: _deepBlue.withOpacity(0.5),
+                      color: isDark ? Colors.white38 : _deepBlue.withOpacity(0.5),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     "Nenhum token 2FA cadastrado",
                     style: TextStyle(
-                      color: Colors.black87,
+                      color: isDark ? Colors.white : Colors.black87,
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                     ),
@@ -162,7 +164,7 @@ class _TokensWidgetState extends State<TokensWidget> {
                   const SizedBox(height: 8),
                   Text(
                     "Toque no botão flutuante para escanear um QR Code",
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600], fontSize: 14),
                   ),
                 ],
               ),
@@ -198,11 +200,11 @@ class _TokensWidgetState extends State<TokensWidget> {
           return Container(
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: _deepBlue.withOpacity(0.06),
+                  color: isDark ? Colors.black.withOpacity(0.2) : _deepBlue.withOpacity(0.06),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 )
@@ -212,7 +214,7 @@ class _TokensWidgetState extends State<TokensWidget> {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(20),
-                onTap: () => _copiarParaAreaTransferencia(context, codigoAtual),
+                onTap: () => _copiarParaAreaTransferencia(context, codigoAtual, isDark),
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -238,10 +240,10 @@ class _TokensWidgetState extends State<TokensWidget> {
                               children: [
                                 Text(
                                   token['servico_nome']?.toString() ?? 'Serviço',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 16,
-                                    color: Colors.black87,
+                                    color: isDark ? Colors.white : Colors.black87,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -254,16 +256,17 @@ class _TokensWidgetState extends State<TokensWidget> {
                                     fontFamily: 'monospace',
                                     color: estaExpirando
                                         ? _neonPink
-                                        : _deepBlue,
+                                        : (isDark ? Colors.white : _deepBlue),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           PopupMenuButton<String>(
+                            color: isDark ? const Color(0xFF334155) : Colors.white,
                             icon: Icon(
                               Icons.more_vert_rounded,
-                              color: Colors.grey[400],
+                              color: isDark ? Colors.white54 : Colors.grey[400],
                             ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -283,21 +286,21 @@ class _TokensWidgetState extends State<TokensWidget> {
                                 }
                               } else if (value == 'copiar') {
                                 _copiarParaAreaTransferencia(
-                                    context, codigoAtual);
+                                    context, codigoAtual, isDark);
                               }
                             },
                             itemBuilder: (context) => [
-                              const PopupMenuItem(
+                              PopupMenuItem(
                                 value: 'copiar',
                                 child: Row(
                                   children: [
                                     Icon(
                                       Icons.copy_rounded,
                                       size: 20,
-                                      color: Colors.black54,
+                                      color: isDark ? Colors.white70 : Colors.black54,
                                     ),
-                                    SizedBox(width: 12),
-                                    Text('Copiar'),
+                                    const SizedBox(width: 12),
+                                    Text('Copiar', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
                                   ],
                                 ),
                               ),
@@ -330,7 +333,7 @@ class _TokensWidgetState extends State<TokensWidget> {
                           height: 6,
                           child: LinearProgressIndicator(
                             value: _tempoRestante / 30,
-                            backgroundColor: Colors.grey[100],
+                            backgroundColor: isDark ? Colors.white10 : Colors.grey[100],
                             valueColor: AlwaysStoppedAnimation<Color>(
                               estaExpirando
                                   ? _neonPink
@@ -386,13 +389,15 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Escanear QR Code',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: const Color(0xFF1A1B4B),
+        backgroundColor: isDark ? const Color(0xFF1E293B) : const Color(0xFF1A1B4B),
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
