@@ -1,9 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-// IMPORTANTE: Adicione o import da sua nova tela
-import 'backup_screen.dart'; 
+import '../utils/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,14 +10,14 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String nomeUsuario = "";
-  int usuarioId = 0;
-  bool isLoading = false;
+  final _senhaAtualController = TextEditingController();
+  final _novaSenhaController = TextEditingController();
+  final _confirmarNovaSenhaController = TextEditingController();
+  final _senhaExclusaoController = TextEditingController();
 
-  final TextEditingController _senhaAtualController = TextEditingController();
-  final TextEditingController _novaSenhaController = TextEditingController();
-
-  final String apiUrl = "https://cyan-grouse-960236.hostingersite.com/api/usuario.php";
+  String nomeUsuario = "Usuário";
+  bool carregandoSenha = false;
+  bool carregandoExclusao = false;
 
   @override
   void initState() {
@@ -32,6 +29,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _senhaAtualController.dispose();
     _novaSenhaController.dispose();
+    _confirmarNovaSenhaController.dispose();
+    _senhaExclusaoController.dispose();
     super.dispose();
   }
 
@@ -39,203 +38,378 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       nomeUsuario = prefs.getString('usuario_nome') ?? "Usuário";
-      usuarioId = prefs.getInt('usuario_id') ?? 0;
     });
   }
 
+  void _mostrarSnackBar(String mensagem, Color cor) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: cor,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _alterarSenha() async {
-    if (_senhaAtualController.text.isEmpty || _novaSenhaController.text.isEmpty) {
-      _showSnackBar("Preencha todos os campos", Colors.orange);
+    final senhaAtual = _senhaAtualController.text.trim();
+    final novaSenha = _novaSenhaController.text.trim();
+    final confirmarNovaSenha = _confirmarNovaSenhaController.text.trim();
+
+    if (senhaAtual.isEmpty || novaSenha.isEmpty || confirmarNovaSenha.isEmpty) {
+      _mostrarSnackBar("Preencha todos os campos.", Colors.orange);
       return;
     }
 
-    setState(() => isLoading = true);
-    try {
-      final response = await http.post(
-        Uri.parse('$apiUrl?acao=alterar_senha'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'id': usuarioId,
-          'senha_atual': _senhaAtualController.text,
-          'nova_senha': _novaSenhaController.text,
-        }),
-      );
-
-      final data = jsonDecode(response.body);
-      if (data['success']) {
-        _showSnackBar("Senha alterada!", Colors.green);
-        _senhaAtualController.clear();
-        _novaSenhaController.clear();
-      } else {
-        _showSnackBar(data['error'] ?? "Erro ao alterar", Colors.red);
-      }
-    } catch (e) {
-      _showSnackBar("Erro de conexão", Colors.red);
-    } finally {
-      setState(() => isLoading = false);
+    if (novaSenha != confirmarNovaSenha) {
+      _mostrarSnackBar("A nova senha e a confirmação não conferem.", Colors.orange);
+      return;
     }
+
+    setState(() => carregandoSenha = true);
+
+    final result = await ApiService.alterarSenha(
+      senhaAtual: senhaAtual,
+      novaSenha: novaSenha,
+      confirmarNovaSenha: confirmarNovaSenha,
+    );
+
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      _senhaAtualController.clear();
+      _novaSenhaController.clear();
+      _confirmarNovaSenhaController.clear();
+      _mostrarSnackBar(
+        result['message'] ?? "Senha alterada com sucesso.",
+        Colors.green,
+      );
+    } else {
+      _mostrarSnackBar(
+        result['error'] ?? "Não foi possível alterar a senha.",
+        Colors.red,
+      );
+    }
+
+    setState(() => carregandoSenha = false);
   }
 
   Future<void> _excluirConta() async {
-    final TextEditingController confirmacaoController = TextEditingController();
+    final senhaAtual = _senhaExclusaoController.text.trim();
 
-    bool? confirmar = await showDialog<bool>(
+    if (senhaAtual.isEmpty) {
+      _mostrarSnackBar("Digite sua senha atual para confirmar.", Colors.orange);
+      return;
+    }
+
+    final bool? confirmar = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Excluir conta definitivamente?"),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Esta ação apagará seu perfil e todos os seus registros salvos."),
-            const SizedBox(height: 15),
-            TextField(
-              controller: confirmacaoController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: "Sua senha atual", border: OutlineInputBorder()),
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          title: const Text("Excluir conta?"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Esta ação é irreversível. Todos os seus dados vinculados à conta serão removidos.",
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _senhaExclusaoController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Senha atual",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancelar"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Excluir"),
             ),
           ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancelar")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("EXCLUIR", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
-    if (confirmar == true) {
-      setState(() => isLoading = true);
-      try {
-        final response = await http.post(
-          Uri.parse('$apiUrl?acao=excluir_conta'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'id': usuarioId,
-            'senha': confirmacaoController.text
-          }),
-        ).timeout(const Duration(seconds: 15));
+    if (confirmar != true) return;
 
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.clear();
-          if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
-        } else {
-          _showSnackBar(data['error'] ?? "Senha incorreta", Colors.red);
-        }
-      } catch (e) {
-        _showSnackBar("Servidor offline ou erro de conexão", Colors.red);
-      } finally {
-        if (mounted) setState(() => isLoading = false);
-      }
+    setState(() => carregandoExclusao = true);
+
+    final result = await ApiService.excluirConta(
+      senhaAtual: senhaAtual,
+    );
+
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      await ApiService.logout();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
+      _mostrarSnackBar(
+        result['message'] ?? "Conta excluída com sucesso.",
+        Colors.green,
+      );
+
+      Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+    } else {
+      _mostrarSnackBar(
+        result['error'] ?? "Não foi possível excluir a conta.",
+        Colors.red,
+      );
     }
+
+    setState(() => carregandoExclusao = false);
   }
 
-  void _showSnackBar(String msg, Color cor) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: cor, behavior: SnackBarBehavior.floating),
+  Widget _buildPasswordField({
+    required TextEditingController controller,
+    required String label,
+    required bool isDark,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: true,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        filled: true,
+        fillColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.only(top: 60, left: 10, right: 20, bottom: 30),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [Color(0xFF1A1B4B), Color(0xFF2D32A4)]),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
-            ),
-            child: Row(
-              children: [
-                IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
-                const Text("Configurações", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(25),
-              child: Column(
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isDark
+                      ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+                      : [const Color(0xFF1A1B4B), const Color(0xFF3730A3)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(28),
+                ),
+              ),
+              child: Row(
                 children: [
-                  Card(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    child: ListTile(
-                      leading: const CircleAvatar(backgroundColor: Color(0xFF2D32A4), child: Icon(Icons.person, color: Colors.white)),
-                      title: Text(nomeUsuario, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  ),
+                  const SizedBox(width: 4),
+                  const Text(
+                    "Configurações",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  
-                  // SEÇÃO SEGURANÇA
-                  const Text("SEGURANÇA", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: Color(0xFF6366F1),
+                        child: Icon(Icons.person, color: Colors.white),
+                      ),
+                      title: Text(
+                        nomeUsuario,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: const Text("Conta do usuário"),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    "ALTERAR SENHA",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.grey[400] : Colors.blueGrey,
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   Card(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          TextField(controller: _senhaAtualController, obscureText: true, decoration: const InputDecoration(labelText: "Chave Atual")),
-                          const SizedBox(height: 15),
-                          TextField(controller: _novaSenhaController, obscureText: true, decoration: const InputDecoration(labelText: "Nova Chave Mestra")),
-                          const SizedBox(height: 25),
+                          _buildPasswordField(
+                            controller: _senhaAtualController,
+                            label: "Senha atual",
+                            isDark: isDark,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildPasswordField(
+                            controller: _novaSenhaController,
+                            label: "Nova senha",
+                            isDark: isDark,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildPasswordField(
+                            controller: _confirmarNovaSenhaController,
+                            label: "Confirmar nova senha",
+                            isDark: isDark,
+                          ),
+                          const SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2D32A4)),
-                              onPressed: isLoading ? null : _alterarSenha,
-                              child: isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("ATUALIZAR SENHA", style: TextStyle(color: Colors.white)),
+                              onPressed: carregandoSenha ? null : _alterarSenha,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF6366F1),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: carregandoSenha
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      "ATUALIZAR SENHA",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-
-                  const SizedBox(height: 30),
-
-                  // SEÇÃO GERENCIAR DADOS (NOVO)
-                  const Text("DADOS E BACKUP", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                  const SizedBox(height: 10),
-                  Card(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    child: ListTile(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BackupScreen())),
-                      leading: const Icon(Icons.storage_rounded, color: Colors.blue),
-                      title: const Text("Gerenciar dados", style: TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: const Text("Exportar ou importar registros."),
-                      trailing: const Icon(Icons.chevron_right),
+                  const SizedBox(height: 28),
+                  Text(
+                    "ZONA CRÍTICA",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red[400],
                     ),
                   ),
-
-                  const SizedBox(height: 40),
-                  
-                  // ZONA CRÍTICA
-                  const Text("ZONA CRÍTICA", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
                   const SizedBox(height: 10),
                   Card(
-                    color: Colors.red[50],
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.red)),
-                    child: ListTile(
-                      onTap: isLoading ? null : _excluirConta,
-                      leading: const Icon(Icons.delete_forever, color: Colors.red),
-                      title: const Text("Excluir minha conta", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                      trailing: const Icon(Icons.chevron_right, color: Colors.red),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(color: Colors.red.shade300),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Excluir minha conta",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.redAccent,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Digite sua senha atual e confirme a exclusão definitiva da conta.",
+                            style: TextStyle(
+                              color: isDark ? Colors.grey[400] : Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _senhaExclusaoController,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: "Senha atual",
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: carregandoExclusao ? null : _excluirConta,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              icon: carregandoExclusao
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.delete_forever),
+                              label: Text(
+                                carregandoExclusao ? "EXCLUINDO..." : "EXCLUIR CONTA",
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

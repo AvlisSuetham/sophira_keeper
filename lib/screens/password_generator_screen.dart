@@ -24,20 +24,24 @@ class _PasswordGeneratorScreenState extends State<PasswordGeneratorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       body: Column(
         children: [
           // Cabeçalho seguindo o padrão da Home
           Container(
             padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 30),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF1A1B4B), Color(0xFF2D32A4)],
+                colors: isDark 
+                  ? [const Color(0xFF1E293B), const Color(0xFF0F172A)] 
+                  : [const Color(0xFF1A1B4B), const Color(0xFF3730A3)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)),
             ),
             child: Row(
               children: [
@@ -60,14 +64,18 @@ class _PasswordGeneratorScreenState extends State<PasswordGeneratorScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     "Instruções",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1B4B)),
+                    style: TextStyle(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold, 
+                      color: isDark ? Colors.white : const Color(0xFF1A1B4B)
+                    ),
                   ),
                   const SizedBox(height: 10),
-                  const Text(
+                  Text(
                     "Ajuste o comprimento desejado e clique no botão para gerar uma senha segura com caracteres especiais.",
-                    style: TextStyle(color: Colors.grey, fontSize: 14),
+                    style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700], fontSize: 14),
                   ),
                   
                   const SizedBox(height: 40),
@@ -76,31 +84,37 @@ class _PasswordGeneratorScreenState extends State<PasswordGeneratorScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Comprimento:", style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text("Comprimento:", style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                       Text("${_tamanhoSenha.toInt()} caracteres", 
-                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                        style: const TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.bold)),
                     ],
                   ),
                   Slider(
                     value: _tamanhoSenha,
                     min: 8,
                     max: 32,
-                    activeColor: const Color(0xFF2D32A4),
+                    activeColor: const Color(0xFF6366F1),
+                    inactiveColor: isDark ? const Color(0xFF1E293B) : Colors.grey[300],
                     onChanged: (value) => setState(() => _tamanhoSenha = value),
                   ),
 
                   const SizedBox(height: 30),
 
                   // Resultado
-                  const Text("Senha Gerada:", style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text("Senha Gerada:", style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? const Color(0xFF1E293B) : Colors.white,
                       borderRadius: BorderRadius.circular(15),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                      boxShadow: [
+                        BoxShadow(
+                          color: isDark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.05), 
+                          blurRadius: 10
+                        )
+                      ],
                     ),
                     child: Row(
                       children: [
@@ -111,13 +125,15 @@ class _PasswordGeneratorScreenState extends State<PasswordGeneratorScreen> {
                               fontSize: 18,
                               letterSpacing: 1.5,
                               fontFamily: 'monospace',
-                              color: _senhaGerada.isEmpty ? Colors.grey : Colors.black87,
+                              color: _senhaGerada.isEmpty 
+                                  ? Colors.grey 
+                                  : (isDark ? Colors.white : Colors.black87),
                             ),
                           ),
                         ),
                         if (_senhaGerada.isNotEmpty)
                           IconButton(
-                            icon: const Icon(Icons.copy, color: Color(0xFF2D32A4)),
+                            icon: const Icon(Icons.copy, color: Color(0xFF6366F1)),
                             onPressed: () {
                               Clipboard.setData(ClipboardData(text: _senhaGerada));
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -137,7 +153,7 @@ class _PasswordGeneratorScreenState extends State<PasswordGeneratorScreen> {
                     height: 55,
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2D32A4),
+                        backgroundColor: const Color(0xFF6366F1),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                       ),
                       onPressed: _gerarSenha,
