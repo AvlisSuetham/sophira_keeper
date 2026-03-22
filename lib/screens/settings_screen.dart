@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/api_service.dart';
+import 'backup_screen.dart'; // Certifique-se que o caminho está correto
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -81,28 +82,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _senhaAtualController.clear();
       _novaSenhaController.clear();
       _confirmarNovaSenhaController.clear();
-      _mostrarSnackBar(
-        result['message'] ?? "Senha alterada com sucesso.",
-        Colors.green,
-      );
+      _mostrarSnackBar(result['message'] ?? "Senha alterada com sucesso.", Colors.green);
     } else {
-      _mostrarSnackBar(
-        result['error'] ?? "Não foi possível alterar a senha.",
-        Colors.red,
-      );
+      _mostrarSnackBar(result['error'] ?? "Não foi possível alterar a senha.", Colors.red);
     }
 
     setState(() => carregandoSenha = false);
   }
 
-  Future<void> _excluirConta() async {
-    final senhaAtual = _senhaExclusaoController.text.trim();
-
-    if (senhaAtual.isEmpty) {
-      _mostrarSnackBar("Digite sua senha atual para confirmar.", Colors.orange);
-      return;
-    }
-
+  Future<void> _confirmarExclusaoConta() async {
+    _senhaExclusaoController.clear();
+    
     final bool? confirmar = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -110,12 +100,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-          title: const Text("Excluir conta?"),
+          title: const Text("Confirmar Exclusão"),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                "Esta ação é irreversível. Todos os seus dados vinculados à conta serão removidos.",
+                "Esta ação é irreversível. Para continuar, digite sua senha atual:",
+                style: TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -139,20 +130,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 foregroundColor: Colors.white,
               ),
               onPressed: () => Navigator.pop(context, true),
-              child: const Text("Excluir"),
+              child: const Text("Excluir Definitivamente"),
             ),
           ],
         );
       },
     );
 
-    if (confirmar != true) return;
+    if (confirmar == true) {
+      _processarExclusao();
+    }
+  }
+
+  Future<void> _processarExclusao() async {
+    final senha = _senhaExclusaoController.text.trim();
+    if (senha.isEmpty) {
+      _mostrarSnackBar("A senha é obrigatória para excluir a conta.", Colors.orange);
+      return;
+    }
 
     setState(() => carregandoExclusao = true);
 
-    final result = await ApiService.excluirConta(
-      senhaAtual: senhaAtual,
-    );
+    final result = await ApiService.excluirConta(senhaAtual: senha);
 
     if (!mounted) return;
 
@@ -160,18 +159,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await ApiService.logout();
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
-
-      _mostrarSnackBar(
-        result['message'] ?? "Conta excluída com sucesso.",
-        Colors.green,
-      );
-
+      _mostrarSnackBar("Conta excluída com sucesso.", Colors.green);
       Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
     } else {
-      _mostrarSnackBar(
-        result['error'] ?? "Não foi possível excluir a conta.",
-        Colors.red,
-      );
+      _mostrarSnackBar(result['error'] ?? "Senha incorreta ou erro no servidor.", Colors.red);
     }
 
     setState(() => carregandoExclusao = false);
@@ -203,6 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // Header
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -214,9 +206,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(28),
-                ),
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
               ),
               child: Row(
                 children: [
@@ -227,72 +217,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(width: 4),
                   const Text(
                     "Configurações",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
             ),
+
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
+                  // Card Usuário
                   Card(
                     elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     child: ListTile(
                       leading: const CircleAvatar(
                         backgroundColor: Color(0xFF6366F1),
                         child: Icon(Icons.person, color: Colors.white),
                       ),
-                      title: Text(
-                        nomeUsuario,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      title: Text(nomeUsuario, style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: const Text("Conta do usuário"),
                     ),
                   ),
+
                   const SizedBox(height: 24),
-                  Text(
-                    "ALTERAR SENHA",
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.grey[400] : Colors.blueGrey,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
+
+                  // SEÇÃO: DADOS
+                  _buildSectionTitle("DADOS E BACKUP", isDark, Colors.blueGrey),
                   Card(
                     elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    child: ListTile(
+                      leading: const Icon(Icons.storage_rounded, color: Color(0xFF6366F1)),
+                      title: const Text("Importar e Exportar Dados"),
+                      subtitle: const Text("Gerenciar backup e restauração"),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const BackupScreen()),
+                        );
+                      },
                     ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // SEÇÃO: ALTERAR SENHA
+                  _buildSectionTitle("SEGURANÇA", isDark, Colors.blueGrey),
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          _buildPasswordField(
-                            controller: _senhaAtualController,
-                            label: "Senha atual",
-                            isDark: isDark,
-                          ),
+                          _buildPasswordField(controller: _senhaAtualController, label: "Senha atual", isDark: isDark),
                           const SizedBox(height: 12),
-                          _buildPasswordField(
-                            controller: _novaSenhaController,
-                            label: "Nova senha",
-                            isDark: isDark,
-                          ),
+                          _buildPasswordField(controller: _novaSenhaController, label: "Nova senha", isDark: isDark),
                           const SizedBox(height: 12),
-                          _buildPasswordField(
-                            controller: _confirmarNovaSenhaController,
-                            label: "Confirmar nova senha",
-                            isDark: isDark,
-                          ),
+                          _buildPasswordField(controller: _confirmarNovaSenhaController, label: "Confirmar nova senha", isDark: isDark),
                           const SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
@@ -302,41 +287,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 backgroundColor: const Color(0xFF6366F1),
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                               ),
                               child: carregandoSenha
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text(
-                                      "ATUALIZAR SENHA",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Text("ATUALIZAR SENHA", style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 28),
-                  Text(
-                    "ZONA CRÍTICA",
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red[400],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
+
+                  // SEÇÃO: ZONA CRÍTICA
+                  _buildSectionTitle("ZONA CRÍTICA", isDark, Colors.red[400]!),
                   Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(
@@ -350,53 +316,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           const Text(
                             "Excluir minha conta",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.redAccent,
-                              fontSize: 16,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 16),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            "Digite sua senha atual e confirme a exclusão definitiva da conta.",
-                            style: TextStyle(
-                              color: isDark ? Colors.grey[400] : Colors.grey[700],
-                            ),
+                            "Ao excluir sua conta, todos os seus dados serão removidos permanentemente.",
+                            style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700]),
                           ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _senhaExclusaoController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: "Senha atual",
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              onPressed: carregandoExclusao ? null : _excluirConta,
+                              onPressed: carregandoExclusao ? null : _confirmarExclusaoConta,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.redAccent,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                               ),
                               icon: carregandoExclusao
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                                   : const Icon(Icons.delete_forever),
                               label: Text(
-                                carregandoExclusao ? "EXCLUINDO..." : "EXCLUIR CONTA",
+                                carregandoExclusao ? "EXCLUINDO..." : "SOLICITAR EXCLUSÃO",
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                             ),
@@ -409,6 +351,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title, bool isDark, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 10),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: isDark ? Colors.grey[400] : color,
         ),
       ),
     );

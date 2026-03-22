@@ -65,17 +65,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email);
   }
 
-  // Função para abrir o Modal de Termos
-  void _showTermsModal() {
+  // Função para abrir o Modal de Termos adaptado para temas
+  void _showTermsModal(bool isDark) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.8,
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1B4B),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+        decoration: BoxDecoration(
+          // Fundo adaptativo para o modal
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
         ),
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -84,21 +85,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
               width: 50,
               height: 5,
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: isDark ? Colors.white24 : Colors.black12,
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Termos e Condições',
               style: TextStyle(
-                color: Colors.white,
+                color: isDark ? Colors.white : Colors.black87,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 20),
-            const Expanded(
+            Expanded(
               child: SingleChildScrollView(
                 child: Text(
                   "1. Aceitação dos Termos\nAo criar uma conta no Sophira Keeper, você concorda integralmente com estas regras...\n\n"
@@ -108,7 +109,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   "5. Obrigações do Usuário\nUtilizar uma senha mestra forte e exclusiva.\n\n"
                   "6. Limitação de Responsabilidade\nNão nos responsabilizamos por negligência do usuário ou furto do dispositivo.",
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: isDark ? Colors.white70 : Colors.black54,
                     fontSize: 14,
                     height: 1.5,
                   ),
@@ -123,6 +124,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2196F3),
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
@@ -130,7 +132,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: const Text(
                   'ENTENDI',
                   style: TextStyle(
-                    color: Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -148,25 +149,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final cpfLimpo = maskCpf.getUnmaskedText();
 
     if (nome.isEmpty || email.isEmpty || cpfLimpo.isEmpty || !_isSenhaForte()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Preencha todos os campos e atenda aos requisitos de senha.'),
-        ),
-      );
+      _showSnackBar('Preencha todos os campos corretamente.', Colors.orange);
       return;
     }
 
     if (!_isEmailValido(email)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email inválido.')),
-      );
+      _showSnackBar('Email inválido.', Colors.orange);
       return;
     }
 
     if (cpfLimpo.length != 11) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('CPF inválido.')),
-      );
+      _showSnackBar('CPF inválido.', Colors.orange);
       return;
     }
 
@@ -184,35 +177,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => loading = false);
 
       if (response['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Conta criada com sucesso!')),
-        );
+        _showSnackBar('Conta criada com sucesso!', Colors.green);
         Navigator.pop(context);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(response['error'] ?? 'Erro no cadastro')),
-        );
+        _showSnackBar(response['error'] ?? 'Erro no cadastro', Colors.redAccent);
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erro de conexão. Verifique sua internet.')),
-      );
+      _showSnackBar('Erro de conexão com o servidor', Colors.red);
     }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    // Detecta se o tema atual é escuro
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
+          // Gradiente adaptativo igual ao da login.dart
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1B4B), Color(0xFF2196F3), Color(0xFFE91E63)],
+            colors: isDark
+                ? [const Color(0xFF020617), const Color(0xFF0F172A), const Color(0xFF1E1B4B)]
+                : [const Color(0xFF1A1B4B), const Color(0xFF2196F3), const Color(0xFFE91E63)],
           ),
         ),
         child: SafeArea(
@@ -222,50 +226,59 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.person_add_outlined,
-                    size: 80,
-                    color: Colors.white24,
+                  // Ícone superior adaptado para o estilo da login
+                  const Hero(
+                    tag: 'register_icon',
+                    child: Icon(
+                      Icons.person_add_rounded,
+                      size: 80,
+                      color: Colors.white24,
+                    ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   const Text(
                     'Nova Conta',
                     style: TextStyle(
-                      fontSize: 28,
+                      fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
+                      letterSpacing: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 40),
+                  const Text(
+                    'Preencha os dados para se cadastrar',
+                    style: TextStyle(color: Colors.white70, fontSize: 16),
+                  ),
+                  const SizedBox(height: 48),
 
                   _buildField(
-                    nomeController,
-                    'Nome Completo',
-                    Icons.badge_outlined,
+                    controller: nomeController,
+                    label: 'Nome Completo',
+                    icon: Icons.badge_outlined,
                   ),
                   const SizedBox(height: 16),
 
                   _buildField(
-                    emailController,
-                    'E-mail',
-                    Icons.email_outlined,
+                    controller: emailController,
+                    label: 'E-mail',
+                    icon: Icons.email_outlined,
                     keyboardType: TextInputType.emailAddress,
                   ),
                   const SizedBox(height: 16),
 
                   _buildField(
-                    cpfController,
-                    'CPF',
-                    Icons.person_outline,
+                    controller: cpfController,
+                    label: 'CPF',
+                    icon: Icons.person_outline,
                     formatters: [maskCpf],
                     keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 16),
 
                   _buildField(
-                    senhaController,
-                    'Chave Mestra',
-                    Icons.lock_outline,
+                    controller: senhaController,
+                    label: 'Chave Mestra',
+                    icon: Icons.lock_outline,
                     obscure: obscureSenha,
                     suffix: IconButton(
                       icon: Icon(
@@ -276,39 +289,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
 
-                  // --- INDICADORES VISUAIS DE SENHA (OTIMIZADO) ---
+                  // --- INDICADORES VISUAIS DE SENHA (ESTILO ADAPTADO) ---
                   Container(
                     width: double.infinity,
-                    margin: const EdgeInsets.only(top: 16),
+                    margin: const EdgeInsets.only(top: 20),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.black26,
+                      color: Colors.white.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(15),
                       border: Border.all(color: Colors.white12),
                     ),
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _checkItem("8+ caracteres", temMinimo),
-                        _checkItem("Maiúscula", temMaiuscula),
-                        _checkItem("Minúscula", temMinuscula),
-                        _checkItem("Número", temNumero),
-                        _checkItem("Símbolo (!@#\$%)", temEspecial),
+                        const Text(
+                          "Sua Chave Mestra deve conter:",
+                          style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          children: [
+                            _checkItem("8+ caracteres", temMinimo),
+                            _checkItem("Maiúscula", temMaiuscula),
+                            _checkItem("Minúscula", temMinuscula),
+                            _checkItem("Número", temNumero),
+                            _checkItem("Símbolo", temEspecial),
+                          ],
+                        ),
                       ],
                     ),
                   ),
 
                   const SizedBox(height: 32),
 
-                  // --- BOTÃO DE CRIAR CONTA ---
+                  // --- BOTÃO DE CRIAR CONTA (ESTILO ADAPTADO) ---
                   SizedBox(
                     width: double.infinity,
                     height: 55,
                     child: ElevatedButton(
                       onPressed: (loading || !_isSenhaForte()) ? null : register,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE91E63),
+                        // Cor adaptativa igual ao login
+                        backgroundColor: isDark ? const Color(0xFF6366F1) : const Color(0xFFE91E63),
+                        foregroundColor: Colors.white,
                         disabledBackgroundColor: Colors.white10,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(15),
@@ -321,30 +346,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               height: 24,
                               child: CircularProgressIndicator(
                                 color: Colors.white,
-                                strokeWidth: 2,
+                                strokeWidth: 3,
                               ),
                             )
                           : const Text(
                               'CRIAR MINHA CONTA',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.white,
                                 fontSize: 16,
                               ),
                             ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
 
-                  // --- TERMOS DE CONDIÇÕES ---
+                  // --- TERMOS DE CONDIÇÕES (ESTILO ADAPTADO) ---
                   GestureDetector(
-                    onTap: _showTermsModal,
+                    onTap: () => _showTermsModal(isDark),
                     child: const Text.rich(
                       TextSpan(
                         text: 'Ao cadastrar, você concorda com os ',
                         style: TextStyle(
                           color: Colors.white70,
-                          fontSize: 13,
+                          fontSize: 14,
                         ),
                         children: [
                           TextSpan(
@@ -363,7 +387,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                   const SizedBox(height: 40),
 
-                  // --- ESQUEMA DE VOLTAR PARA O LOGIN ---
+                  // --- VOLTAR PARA O LOGIN (ESTILO ADAPTADO) ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -395,14 +419,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // --- WIDGETS AUXILIARES ---
+  // --- WIDGETS AUXILIARES (IGUAIS À LOGIN.DART) ---
 
   Widget _checkItem(String texto, bool valid) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          valid ? Icons.check_circle : Icons.circle_outlined,
+          valid ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
           color: valid ? Colors.greenAccent : Colors.white24,
           size: 16,
         ),
@@ -418,35 +442,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildField(
-    TextEditingController c,
-    String l,
-    IconData i, {
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
     bool obscure = false,
     List<TextInputFormatter>? formatters,
     TextInputType keyboardType = TextInputType.text,
     Widget? suffix,
   }) {
     return TextField(
-      controller: c,
+      controller: controller,
       obscureText: obscure,
       inputFormatters: formatters,
       keyboardType: keyboardType,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
-        labelText: l,
+        labelText: label,
         labelStyle: const TextStyle(color: Colors.white70),
-        prefixIcon: Icon(i, color: Colors.white70),
+        prefixIcon: Icon(icon, color: Colors.white70),
         suffixIcon: suffix,
         filled: true,
-        fillColor: Colors.white.withOpacity(0.1),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
-        ),
+        fillColor: Colors.white.withOpacity(0.08),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: Colors.white30),
+          borderSide: const BorderSide(color: Colors.white24),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
