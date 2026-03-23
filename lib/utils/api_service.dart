@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,10 +19,19 @@ class ApiService {
     };
   }
 
+  // Tratamento Unificado de Erros para suportar Modo Offline
   static Map<String, dynamic> _handleError(dynamic e, String mensagemPadrao) {
+    if (e is SocketException || e is TimeoutException) {
+      return {
+        'success': false,
+        'error': 'Sem conexão com o servidor. Operando em modo offline.',
+        'is_offline': true,
+      };
+    }
     return {
       'success': false,
       'error': '$mensagemPadrao: ${e.toString()}',
+      'is_offline': false,
     };
   }
 
@@ -147,7 +158,7 @@ class ApiService {
             Uri.parse('$baseUrl/cofre'),
             headers: await _getHeaders(),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 8)); // Timeout menor para detecção rápida offline
 
       return jsonDecode(response.body);
     } catch (e) {
@@ -219,7 +230,7 @@ class ApiService {
             Uri.parse('$baseUrl/cofre/$id'),
             headers: await _getHeaders(),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 10));
 
       return jsonDecode(response.body);
     } catch (e) {
@@ -252,7 +263,7 @@ class ApiService {
             Uri.parse('$baseUrl/tokens'),
             headers: await _getHeaders(),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 8));
 
       return jsonDecode(response.body);
     } catch (e) {
@@ -283,7 +294,7 @@ class ApiService {
             Uri.parse('$baseUrl/tokens/$id'),
             headers: await _getHeaders(),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 10));
 
       return jsonDecode(response.body);
     } catch (e) {
